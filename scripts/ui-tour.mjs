@@ -18,6 +18,10 @@ const pgInfo = JSON.parse(process.argv[2] ?? '{}');
 const shotDir = process.argv[3] ?? join(tmpdir(), 'kleos-tour');
 mkdirSync(shotDir, { recursive: true });
 const dataDir = mkdtempSync(join(tmpdir(), 'kleos-tour-data-'));
+// TOUR_APPEARANCE=light|dark|system starts the app in that appearance (README screenshots).
+if (process.env.TOUR_APPEARANCE) {
+  writeFileSync(join(dataDir, 'preferences.json'), JSON.stringify({ appearance: process.env.TOUR_APPEARANCE }));
+}
 const appDir = fileURLToPath(new URL('../apps/desktop', import.meta.url));
 const port = 9300 + Math.floor(Math.random() * 500);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -128,7 +132,8 @@ async function connect(wsUrl) {
     await evaluate(
       `(() => { const h = document.documentElement; if (h.classList.contains('vibrancy')) h.style.backgroundColor = h.classList.contains('dark') ? '#2a2a2e' : '#e8e8eb'; })()`,
     );
-    const { data } = await call('Page.captureScreenshot', { format: 'jpeg', quality: 75 });
+    const quality = Number(process.env.TOUR_QUALITY ?? 75);
+    const { data } = await call('Page.captureScreenshot', { format: 'jpeg', quality });
     const file = join(shotDir, `${name}.jpg`);
     writeFileSync(file, Buffer.from(data, 'base64'));
     console.log(`  screenshot ${file}`);

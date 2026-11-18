@@ -1,0 +1,65 @@
+name: Bug report
+description: Something in Kleos doesn't work as it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time! Please don't include passwords, connection strings with
+        credentials, or private data in this report.
+  - type: input
+    id: version
+    attributes:
+      label: Kleos version
+      description: Shown in Kleos › About Kleos.
+      placeholder: 0.3.0
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: macOS 26.1
+    validations:
+      required: true
+  - type: input
+    id: postgres
+    attributes:
+      label: PostgreSQL version
+      placeholder: '17.2'
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where does it happen?
+      options:
+        - Connections
+        - Schema / diagram
+        - Data grid / editing
+        - Query / chart / explain
+        - Monitor
+        - Command palette
+        - Window, tabs or appearance
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Connect to …
+        2. Open …
+        3. …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshots or error messages
+      description: Postgres error codes (e.g. 42703) help a lot.
