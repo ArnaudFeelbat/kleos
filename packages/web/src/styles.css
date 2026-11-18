@@ -1,0 +1,242 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Tokens from the Kleos design (shadcn new-york, zinc base, Geist).
+ * muted-foreground is darkened from zinc-500 so 11-12px labels pass 4.5:1 on `muted`.
+ * chart-1..3 are the validated blue/orange/aqua, stepped separately for dark.
+ */
+:root {
+  --radius: 0.5rem;
+  --background: #ffffff;
+  --foreground: #09090b;
+  --card: #ffffff;
+  --card-foreground: #09090b;
+  --popover: #ffffff;
+  --popover-foreground: #09090b;
+  --primary: #18181b;
+  --primary-foreground: #fafafa;
+  --secondary: #f4f4f5;
+  --secondary-foreground: #18181b;
+  --muted: #f4f4f5;
+  --muted-foreground: #5f5f67;
+  --accent: #f4f4f5;
+  --accent-foreground: #18181b;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --border: #e4e4e7;
+  --input: #d4d4d8;
+  --ring: #18181b;
+  --sidebar: #fafafa;
+  --sidebar-foreground: #09090b;
+  --chrome: #f4f4f5;
+  --chart-1: #2a78d6;
+  --chart-2: #eb6834;
+  --chart-3: #1baf7a;
+  --chart-grid: #ececef;
+  --chart-track: #eef2f8;
+  --success: #15803d;
+  --success-bg: #f0fdf4;
+  --success-line: #bbf7d0;
+  --warning: #b45309;
+  --warning-bg: #fffbeb;
+  --warning-line: #fde68a;
+  --error-bg: #fef2f2;
+  --error-line: #fecaca;
+  --staged-update: #fef3c7;
+  --staged-update-foreground: #854d0e;
+  --staged-update-line: #d97706;
+  --staged-insert: #dcfce7;
+  --staged-insert-foreground: #166534;
+  --staged-delete: #fee2e2;
+  --staged-delete-foreground: #991b1b;
+  --code-keyword: #7c3aed;
+  --code-string: #15803d;
+  --code-number: #c2410c;
+  --code-function: #1d4ed8;
+  --primary-key: #d97706;
+}
+
+.dark {
+  --background: #09090b;
+  --foreground: #fafafa;
+  --card: #111113;
+  --card-foreground: #fafafa;
+  --popover: #111113;
+  --popover-foreground: #fafafa;
+  --primary: #fafafa;
+  --primary-foreground: #18181b;
+  --secondary: #27272a;
+  --secondary-foreground: #fafafa;
+  --muted: #27272a;
+  --muted-foreground: #a1a1aa;
+  --accent: #1f1f23;
+  --accent-foreground: #fafafa;
+  --destructive: #ef4444;
+  --destructive-foreground: #fafafa;
+  --border: #27272a;
+  --input: #3f3f46;
+  --ring: #d4d4d8;
+  --sidebar: #0c0c0e;
+  --sidebar-foreground: #fafafa;
+  --chrome: #18181b;
+  --chart-1: #3987e5;
+  --chart-2: #d95926;
+  --chart-3: #199e70;
+  --chart-grid: #232327;
+  --chart-track: #18202c;
+  --success: #4ade80;
+  --success-bg: #052e16;
+  --success-line: #14532d;
+  --warning: #fbbf24;
+  --warning-bg: #2a1a04;
+  --warning-line: #713f12;
+  --error-bg: #2a0b0b;
+  --error-line: #7f1d1d;
+  --staged-update: #3a2a05;
+  --staged-update-foreground: #fcd34d;
+  --staged-update-line: #f59e0b;
+  --staged-insert: #06301a;
+  --staged-insert-foreground: #86efac;
+  --staged-delete: #3b0d0d;
+  --staged-delete-foreground: #fca5a5;
+  --code-keyword: #c4b5fd;
+  --code-string: #86efac;
+  --code-number: #fdba74;
+  --code-function: #93c5fd;
+  --primary-key: #f59e0b;
+}
+
+/* Window tints, set on the workspace header by connection color. */
+[data-tint='red'] {
+  --chrome: #fde8e8;
+}
+[data-tint='orange'] {
+  --chrome: #feeedc;
+}
+[data-tint='yellow'] {
+  --chrome: #fdf6d4;
+}
+[data-tint='green'] {
+  --chrome: #e3f5e9;
+}
+[data-tint='blue'] {
+  --chrome: #e4ebfb;
+}
+[data-tint='purple'] {
+  --chrome: #efe6f8;
+}
+.dark [data-tint='red'],
+.dark[data-tint='red'] {
+  --chrome: #3b1214;
+}
+.dark [data-tint='orange'],
+.dark[data-tint='orange'] {
+  --chrome: #3a1f0c;
+}
+.dark [data-tint='yellow'],
+.dark[data-tint='yellow'] {
+  --chrome: #352c08;
+}
+.dark [data-tint='green'],
+.dark[data-tint='green'] {
+  --chrome: #0e2a19;
+}
+.dark [data-tint='blue'],
+.dark[data-tint='blue'] {
+  --chrome: #121d3a;
+}
+.dark [data-tint='purple'],
+.dark[data-tint='purple'] {
+  --chrome: #261434;
+}
+
+@theme inline {
+  --font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Geist Mono Variable', ui-monospace, monospace;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-chrome: var(--chrome);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-grid: var(--chart-grid);
+  --color-chart-track: var(--chart-track);
+  --color-success: var(--success);
+  --color-success-bg: var(--success-bg);
+  --color-success-line: var(--success-line);
+  --color-warning: var(--warning);
+  --color-warning-bg: var(--warning-bg);
+  --color-warning-line: var(--warning-line);
+  --color-error-bg: var(--error-bg);
+  --color-error-line: var(--error-line);
+  --color-staged-update: var(--staged-update);
+  --color-staged-update-foreground: var(--staged-update-foreground);
+  --color-staged-update-line: var(--staged-update-line);
+  --color-staged-insert: var(--staged-insert);
+  --color-staged-insert-foreground: var(--staged-insert-foreground);
+  --color-staged-delete: var(--staged-delete);
+  --color-staged-delete-foreground: var(--staged-delete-foreground);
+  --color-code-keyword: var(--code-keyword);
+  --color-code-string: var(--code-string);
+  --color-code-number: var(--code-number);
+  --color-code-function: var(--code-function);
+  --color-primary-key: var(--primary-key);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-size: 13px;
+    line-height: 1.45;
+    overflow: hidden;
+    user-select: none;
+  }
+  input,
+  textarea,
+  [contenteditable],
+  .selectable {
+    user-select: text;
+  }
+}
+
+/* macOS: the custom title bar drags the window; controls inside it opt out. */
+.app-drag {
+  -webkit-app-region: drag;
+}
+.app-no-drag {
+  -webkit-app-region: no-drag;
+}

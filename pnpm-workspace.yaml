@@ -1,0 +1,15 @@
+packages:
+  - apps/*
+  - packages/*
+# electron-builder packs native modules most reliably from a flat node_modules
+nodeLinker: hoisted
+allowBuilds:
+  better-sqlite3: true
+  electron: true
+  esbuild: true
+  # optional accelerators pulled in by testcontainers' docker client; not needed
+  cpu-features: false
+  protobufjs: false
+  ssh2: false
+  # Windows installer only; Kleos ships for macOS
+  electron-winstaller: false
