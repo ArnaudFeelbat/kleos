@@ -26,6 +26,8 @@
  *   POST   /sessions/:sid/backends/:pid/cancel BackendActionRequest -> BackendActionResult
  *   GET    /layouts/:connectionId/:schema            -> LayoutPositions
  *   PUT    /layouts/:connectionId/:schema LayoutPositions -> 204
+ *   GET    /grid-layouts/:connectionId/:schema/:table -> GridLayout (empty when none saved)
+ *   PUT    /grid-layouts/:connectionId/:schema/:table GridLayout -> 204
  *   GET    /history/:connectionId?limit=200          -> HistoryEntry[] (newest first)
  *   POST   /history/:connectionId NewHistoryEntry    -> HistoryEntry
  *   GET    /saved-queries?connectionId=              -> SavedQuery[]

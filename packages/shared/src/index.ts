@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 export * from './connection';
 export * from './errors';
+export * from './grid';
 export * from './query';
 export * from './routes';
 export * from './rows';

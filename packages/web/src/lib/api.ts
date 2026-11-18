@@ -4,6 +4,7 @@ import {
   ApplyEditsResult,
   CountResult,
   ExplainResult,
+  GridLayout,
   Health,
   HistoryEntry,
   LayoutPositions,
@@ -113,6 +114,11 @@ export const api = {
   saveLayout: (connectionId: string, schema: string, layout: LayoutPositions) =>
     request<void>('PUT', `/layouts/${enc(connectionId)}/${enc(schema)}`, NoContent, layout),
 
+  getGridLayout: (connectionId: string, schema: string, table: string) =>
+    request('GET', `/grid-layouts/${enc(connectionId)}/${enc(schema)}/${enc(table)}`, GridLayout),
+  saveGridLayout: (connectionId: string, schema: string, table: string, layout: GridLayout) =>
+    request<void>('PUT', `/grid-layouts/${enc(connectionId)}/${enc(schema)}/${enc(table)}`, NoContent, layout),
+
   history: (connectionId: string, limit = 200) =>
     request('GET', `/history/${enc(connectionId)}?limit=${limit}`, z.array(HistoryEntry)),
   addHistory: (connectionId: string, entry: NewHistoryEntry) =>
@@ -136,6 +142,8 @@ export const queryKeys = {
   count: (sid: string, req: CountRequest) => ['count', sid, req] as const,
   stats: (sid: string, kind: StatsKind) => ['stats', sid, kind] as const,
   layout: (connectionId: string, schema: string) => ['layout', connectionId, schema] as const,
+  gridLayout: (connectionId: string, schema: string, table: string) =>
+    ['grid-layout', connectionId, schema, table] as const,
   history: (connectionId: string) => ['history', connectionId] as const,
   savedQueries: (connectionId: string) => ['saved-queries', connectionId] as const,
 };
