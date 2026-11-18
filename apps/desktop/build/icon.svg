@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#27272a"/>
+      <stop offset="1" stop-color="#09090b"/>
+    </linearGradient>
+  </defs>
+  <!-- macOS icon grid: 824px squircle centred on a 1024 canvas -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)"/>
+  <rect x="100.5" y="100.5" width="823" height="823" rx="184.5" fill="none" stroke="#3f3f46" stroke-width="1"/>
+  <g fill="none" stroke="#fafafa" stroke-width="34" stroke-linecap="round" stroke-linejoin="round">
+    <ellipse cx="512" cy="330" rx="210" ry="74"/>
+    <path d="M302 330v364c0 41 94 74 210 74s210-33 210-74V330"/>
+    <path d="M302 512c0 41 94 74 210 74s210-33 210-74"/>
+  </g>
+  <path d="M248 700 L392 618 L470 662 L594 540 L776 470" fill="none" stroke="#3987e5" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="776" cy="470" r="30" fill="#3987e5"/>
+</svg>

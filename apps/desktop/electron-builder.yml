@@ -1,0 +1,29 @@
+appId: app.kleos.desktop
+productName: Kleos
+copyright: Personal use
+directories:
+  output: release
+  buildResources: build
+# The main bundle already contains the server, pg, hono and zod; only the two native
+# modules (this package's `dependencies`) are copied in from node_modules.
+files:
+  - out/**
+  - package.json
+asarUnpack:
+  - '**/*.node'
+npmRebuild: true
+mac:
+  target:
+    - target: dmg
+      arch: [arm64]
+    - target: dir
+      arch: [arm64]
+  category: public.app-category.developer-tools
+  icon: build/icon.png
+  # Ad-hoc signature: enough for Apple Silicon to launch a locally built app.
+  identity: '-'
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  darkModeSupport: true
+dmg:
+  title: Kleos

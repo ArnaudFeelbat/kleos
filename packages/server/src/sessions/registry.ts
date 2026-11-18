@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { kleosErrorCodes, type SavedConnection } from '@kleos/shared';
+import { kleosErrorCodes, type SavedConnection, type SchemaModel } from '@kleos/shared';
 import type { Session } from '../adapter/types';
 import { KleosError } from '../errors';
 
@@ -7,6 +7,11 @@ export type OpenSession = {
   sid: string;
   connection: SavedConnection;
   session: Session;
+  /**
+   * The last introspection (or the one in flight), reused until a refresh. A failed
+   * introspection is forgotten so the next call tries again.
+   */
+  schema?: Promise<SchemaModel>;
 };
 
 /** Live database sessions by id. One window per connection holds one session. */
@@ -14,7 +19,7 @@ export class SessionRegistry {
   private readonly sessions = new Map<string, OpenSession>();
 
   add(connection: SavedConnection, session: Session): OpenSession {
-    const entry = { sid: randomUUID(), connection, session };
+    const entry: OpenSession = { sid: randomUUID(), connection, session };
     this.sessions.set(entry.sid, entry);
     return entry;
   }
