@@ -53,7 +53,7 @@ export function SchemaSidebar({ schemaError }: Props) {
   );
 
   return (
-    <aside className="bg-sidebar flex w-[248px] shrink-0 flex-col gap-2.5 border-r p-3">
+    <aside className="flex w-[244px] shrink-0 flex-col gap-2 px-2.5 pt-1.5 pb-2.5">
       <Select value={schemas.includes(currentSchema) ? currentSchema : undefined} onValueChange={setCurrentSchema}>
         <SelectTrigger size="sm" aria-label={`Schema: ${currentSchema}`} className="bg-background w-full">
           <span className="flex min-w-0 items-center gap-2">

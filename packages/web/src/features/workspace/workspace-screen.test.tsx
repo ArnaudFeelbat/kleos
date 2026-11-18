@@ -40,10 +40,17 @@ vi.mock('@/features/query/query-tab', () => ({
 vi.mock('@/features/monitor/monitor-tab', () => ({ MonitorTab: () => <p>monitor stand-in</p> }));
 
 const mocked = vi.mocked(api);
-const setTitle = vi.fn();
 
 beforeEach(() => {
-  window.kleos = { apiBase: '', token: '', platform: 'darwin', openWorkspace: vi.fn(), setTitle };
+  window.kleos = {
+    apiBase: '',
+    token: '',
+    platform: 'darwin',
+    vibrancy: false,
+    setTitle: vi.fn(),
+    closeWindow: vi.fn(),
+    onCommand: vi.fn(() => () => {}),
+  };
   mocked.schema.mockResolvedValue(shopModel());
 });
 afterEach(() => {
@@ -51,10 +58,12 @@ afterEach(() => {
   delete window.kleos;
 });
 
+const onClose = vi.fn();
+
 function renderWorkspace() {
   return render(
     <Providers>
-      <WorkspaceScreen sid="s1" />
+      <WorkspaceScreen sid="s1" onClose={onClose} />
     </Providers>,
   );
 }
@@ -66,23 +75,20 @@ describe('WorkspaceScreen', { timeout: 15_000 }, () => {
     );
     renderWorkspace();
     expect(await screen.findByRole('heading', { name: 'This session has ended' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Close window' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Close tab' }));
+    expect(onClose).toHaveBeenCalled();
   });
 
-  it('shows the tinted title bar, badges and window title', async () => {
+  it('tints the toolbar by connection color and shows the read-only and version badges', async () => {
     mocked.getSession.mockResolvedValue({
       ...sessionInfo,
       connection: { ...savedConnection, readOnly: true, color: 'red' },
     });
     renderWorkspace();
-    const title = await screen.findByText('— kleos@localhost:5432');
-    const header = title.closest('header')!;
-    expect(header).toHaveAttribute('data-tint', 'red');
-    expect(header).toHaveClass('app-drag');
-    expect(header).toHaveTextContent('shop_dev — kleos@localhost:5432');
-    expect(header).toHaveTextContent('Read-only');
-    expect(header).toHaveTextContent('PG 16.4');
-    expect(setTitle).toHaveBeenCalledWith('shop_dev');
+    const badge = await screen.findByText('Read-only');
+    const toolbar = badge.closest('[data-tint]')!;
+    expect(toolbar).toHaveAttribute('data-tint', 'red');
+    expect(toolbar).toHaveTextContent('PG 16.4');
     // The sidebar shows the introspected schema.
     expect(await screen.findByRole('button', { name: /^orders/ })).toBeInTheDocument();
   });

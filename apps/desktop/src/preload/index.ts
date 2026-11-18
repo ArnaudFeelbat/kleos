@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 
 function arg(name: string): string {
   const prefix = `--${name}=`;
@@ -11,7 +11,14 @@ contextBridge.exposeInMainWorld('kleos', {
   apiBase: arg('kleos-api'),
   token: arg('kleos-token'),
   platform: process.platform,
-  openWorkspace: (args: { sid: string; title: string; color: string }) =>
-    ipcRenderer.invoke('kleos:open-workspace', args),
+  vibrancy: process.argv.includes('--kleos-vibrancy=1'),
   setTitle: (title: string) => ipcRenderer.send('kleos:set-title', title),
+  closeWindow: () => ipcRenderer.send('kleos:close-window'),
+  onCommand: (listener: (command: string) => void) => {
+    const handler = (_event: IpcRendererEvent, command: string) => listener(command);
+    ipcRenderer.on('kleos:command', handler);
+    return () => {
+      ipcRenderer.removeListener('kleos:command', handler);
+    };
+  },
 });

@@ -22,10 +22,10 @@ import { intervalLabel, useStats } from './use-stats';
  * visible and the user has not paused.
  */
 export function MonitorTab() {
-  const { activeTab } = useWorkspace();
+  const { activeTab, visible: tabInFront } = useWorkspace();
   const visible = useDocumentVisible();
   const [paused, setPaused] = useState(false);
-  const live = activeTab === 'monitor' && visible && !paused;
+  const live = tabInFront && activeTab === 'monitor' && visible && !paused;
 
   const sessions = useStats('sessions', live);
   const locks = useStats('locks', live);

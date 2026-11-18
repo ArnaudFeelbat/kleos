@@ -57,7 +57,7 @@ export function SchemaTab() {
 
 function ErDiagram({ model, schema }: { model: SchemaModel; schema: string }) {
   const ws = useWorkspace();
-  const { connection, selectedTable, openTable, openInQuery, activeTab } = ws;
+  const { connection, selectedTable, openTable, openInQuery, activeTab, visible } = ws;
   const queryClient = useQueryClient();
   const { fitView, zoomIn, zoomOut, setCenter, getInternalNode } = useReactFlow<TableFlowNode>();
 
@@ -175,13 +175,13 @@ function ErDiagram({ model, schema }: { model: SchemaModel; schema: string }) {
   const [closedFor, setClosedFor] = useState<string | null>(null);
   const panelOpen = !!selectedRelation && closedFor !== selectedKey;
   useEffect(() => {
-    if (!panelOpen || activeTab !== 'schema') return;
+    if (!panelOpen || !visible || activeTab !== 'schema') return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && !e.defaultPrevented) setClosedFor(selectedKey);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [panelOpen, activeTab, selectedKey]);
+  }, [panelOpen, visible, activeTab, selectedKey]);
 
   async function autoLayout() {
     try {

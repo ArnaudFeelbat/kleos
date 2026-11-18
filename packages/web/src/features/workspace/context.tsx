@@ -13,6 +13,12 @@ export type WorkspaceState = {
   connection: SavedConnection;
   /** Read-only connections never offer editing; the session also refuses writes. */
   readOnly: boolean;
+  /**
+   * True while this connection's window tab is in front. Several workspaces stay mounted
+   * (one per connection tab); anything window-wide — keyboard shortcuts, polling — must
+   * also require `visible`, not only its own `activeTab`.
+   */
+  visible: boolean;
 
   /** Introspected schema; undefined while the first introspection runs. */
   schemaModel: SchemaModel | undefined;

@@ -6,6 +6,7 @@ import { Providers, savedConnection, sessionInfo } from '@/features/workspace/te
 import type * as ApiModule from '@/lib/api';
 import { api, ApiError } from '@/lib/api';
 import type { KleosBridge } from '@/lib/bridge';
+import { HOME, tabsStore } from '@/features/shell/tabs-store';
 import { ConnectionsScreen } from './connections-screen';
 
 vi.mock('@/lib/api', async (importOriginal) => {
@@ -29,8 +30,10 @@ const bridge = {
   apiBase: 'http://127.0.0.1:1',
   token: 't',
   platform: 'darwin',
-  openWorkspace: vi.fn(async () => {}),
+  vibrancy: false,
   setTitle: vi.fn(),
+  closeWindow: vi.fn(),
+  onCommand: vi.fn(() => () => {}),
 } satisfies KleosBridge;
 
 function renderScreen(favorites: SavedConnection[]) {
@@ -50,12 +53,14 @@ beforeEach(() => {
 afterEach(() => {
   vi.clearAllMocks();
   delete window.kleos;
+  tabsStore.reset();
 });
 
+const openTabs = () => tabsStore.get().tabs;
+
 describe('ConnectionsScreen', { timeout: 15_000 }, () => {
-  it('shows the server health and the favorites', async () => {
+  it('shows the favorites', async () => {
     renderScreen([{ ...savedConnection, readOnly: true }]);
-    await waitFor(() => expect(screen.getByTestId('health')).toHaveTextContent('Server ok · v0.1.0'));
     const nav = screen.getByRole('navigation', { name: 'Saved connections' });
     expect(await within(nav).findByText('shop_dev')).toBeInTheDocument();
     expect(within(nav).getByText('kleos@localhost:5432/shop_dev')).toBeInTheDocument();
@@ -128,7 +133,7 @@ describe('ConnectionsScreen', { timeout: 15_000 }, () => {
     expect(mocked.testConnection).not.toHaveBeenCalled();
   });
 
-  it('prompts for the password when the server needs one, then opens the workspace', async () => {
+  it('prompts for the password when the server needs one, then opens the server in a tab', async () => {
     const user = userEvent.setup();
     const favorite = { ...savedConnection, hasPassword: false, color: 'blue' as const };
     mocked.openSession
@@ -145,8 +150,9 @@ describe('ConnectionsScreen', { timeout: 15_000 }, () => {
     await user.click(within(dialog).getByRole('button', { name: 'Connect' }));
 
     await waitFor(() =>
-      expect(bridge.openWorkspace).toHaveBeenCalledWith({ sid: 'sid-9', title: 'shop_dev', color: 'blue' }),
+      expect(openTabs()).toEqual([expect.objectContaining({ sid: 'sid-9', nickname: 'shop_dev', color: 'blue' })]),
     );
+    expect(tabsStore.get().active).toBe('sid-9');
     expect(mocked.openSession).toHaveBeenLastCalledWith({ connectionId: 'c1', password: 'hunter2' });
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(mocked.updateConnection).not.toHaveBeenCalled();
@@ -162,20 +168,23 @@ describe('ConnectionsScreen', { timeout: 15_000 }, () => {
     const dialog = await screen.findByRole('dialog');
     await user.type(within(dialog).getByLabelText('Password'), 'wrong{Enter}');
     expect(await within(dialog).findByRole('alert')).toHaveTextContent('28P01 password authentication failed');
-    expect(bridge.openWorkspace).not.toHaveBeenCalled();
+    expect(openTabs()).toEqual([]);
   });
 
-  it('connects on double-click and Enter on a favorite', async () => {
+  it('connects on double-click; Enter on an already open server just brings its tab back', async () => {
     const user = userEvent.setup();
     mocked.openSession.mockResolvedValue(sessionInfo);
     renderScreen([savedConnection]);
     const nav = screen.getByRole('navigation', { name: 'Saved connections' });
     const item = await within(nav).findByRole('button', { name: /shop_dev/ });
     await user.dblClick(item);
-    await waitFor(() => expect(bridge.openWorkspace).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(openTabs()).toHaveLength(1));
+    tabsStore.activate(HOME);
     item.focus();
     await user.keyboard('{Enter}');
-    await waitFor(() => expect(bridge.openWorkspace).toHaveBeenCalledTimes(2));
+    expect(tabsStore.get().active).toBe(sessionInfo.sid);
+    expect(openTabs()).toHaveLength(1);
+    expect(mocked.openSession).toHaveBeenCalledTimes(1);
   });
 
   it('saves a new connection before connecting it', async () => {
@@ -190,7 +199,7 @@ describe('ConnectionsScreen', { timeout: 15_000 }, () => {
     await user.type(screen.getByLabelText('Password'), 'pw');
     await user.click(screen.getByRole('button', { name: /Save & Connect/ }));
 
-    await waitFor(() => expect(bridge.openWorkspace).toHaveBeenCalled());
+    await waitFor(() => expect(openTabs()).toHaveLength(1));
     expect(mocked.createConnection).toHaveBeenCalledWith(
       expect.objectContaining({
         nickname: 'db.local',

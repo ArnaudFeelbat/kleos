@@ -1,4 +1,6 @@
-import type { ConnectionColor } from '@kleos/shared';
+/** Window commands sent by the main process from the native menu. */
+export type ShellCommand =
+  'new-tab' | 'close-tab' | 'next-tab' | 'prev-tab' | `select-tab-${1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9}`;
 
 /** What the Electron preload exposes on window.kleos. */
 export type KleosBridge = {
@@ -7,10 +9,14 @@ export type KleosBridge = {
   /** Random per-launch token sent as `Authorization: Bearer` */
   token: string;
   platform: string;
-  /** Opens the workspace for an open session in its own window (one window per connection). */
-  openWorkspace(args: { sid: string; title: string; color: ConnectionColor }): Promise<void>;
-  /** Updates the native window title of the calling window. */
+  /** True when the window has macOS vibrancy behind it: panes become translucent. */
+  vibrancy: boolean;
+  /** Updates the native window title. */
   setTitle(title: string): void;
+  /** Closes the window (⌘W on the Connections tab). */
+  closeWindow(): void;
+  /** Subscribes to menu commands; returns the unsubscribe function. */
+  onCommand(listener: (command: ShellCommand) => void): () => void;
 };
 
 declare global {

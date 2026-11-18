@@ -30,7 +30,7 @@ export function DataTab() {
       info={info}
       schemaModel={ws.schemaModel}
       readOnly={ws.readOnly}
-      active={ws.activeTab === 'data'}
+      active={ws.visible && ws.activeTab === 'data'}
       openTable={(target: TableRef) => ws.openTable(target, 'data')}
     />
   );

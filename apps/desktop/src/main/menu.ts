@@ -1,7 +1,16 @@
 import { Menu, app, shell, type MenuItemConstructorOptions } from 'electron';
 
-/** Native macOS menu bar. */
-export function installMenu(actions: { openStartWindow: () => void }): void {
+/** Window commands handled by the renderer's tab strip. */
+export type ShellCommand =
+  'new-tab' | 'close-tab' | 'next-tab' | 'prev-tab' | `select-tab-${1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9}`;
+
+/** Native macOS menu bar; tab commands are forwarded to the focused window. */
+export function installMenu(actions: { openMainWindow: () => void; sendCommand: (c: ShellCommand) => void }): void {
+  const tab = (n: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9): MenuItemConstructorOptions => ({
+    label: n === 9 ? 'Last Tab' : `Tab ${n}`,
+    accelerator: `CmdOrCtrl+${n}`,
+    click: () => actions.sendCommand(`select-tab-${n}`),
+  });
   const template: MenuItemConstructorOptions[] = [
     {
       label: app.name,
@@ -20,9 +29,17 @@ export function installMenu(actions: { openStartWindow: () => void }): void {
     {
       label: 'File',
       submenu: [
-        { label: 'Connections…', accelerator: 'CmdOrCtrl+Shift+O', click: () => actions.openStartWindow() },
+        {
+          label: 'New Connection Tab',
+          accelerator: 'CmdOrCtrl+T',
+          click: () => {
+            actions.openMainWindow();
+            actions.sendCommand('new-tab');
+          },
+        },
         { type: 'separator' },
-        { role: 'close' },
+        { label: 'Close Tab', accelerator: 'CmdOrCtrl+W', click: () => actions.sendCommand('close-tab') },
+        { label: 'Close Window', accelerator: 'CmdOrCtrl+Shift+W', role: 'close' },
       ],
     },
     { role: 'editMenu' },
@@ -39,7 +56,28 @@ export function installMenu(actions: { openStartWindow: () => void }): void {
         { role: 'togglefullscreen' },
       ],
     },
-    { role: 'windowMenu' },
+    {
+      label: 'Window',
+      submenu: [
+        { role: 'minimize' },
+        { role: 'zoom' },
+        { type: 'separator' },
+        { label: 'Show Next Tab', accelerator: 'CmdOrCtrl+Shift+]', click: () => actions.sendCommand('next-tab') },
+        { label: 'Show Previous Tab', accelerator: 'CmdOrCtrl+Shift+[', click: () => actions.sendCommand('prev-tab') },
+        { type: 'separator' },
+        tab(1),
+        tab(2),
+        tab(3),
+        tab(4),
+        tab(5),
+        tab(6),
+        tab(7),
+        tab(8),
+        tab(9),
+        { type: 'separator' },
+        { role: 'front' },
+      ],
+    },
     {
       role: 'help',
       submenu: [

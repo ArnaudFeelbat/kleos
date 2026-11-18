@@ -34,6 +34,7 @@ export function workspaceState(patch: Partial<WorkspaceState> = {}): WorkspaceSt
     session: sessionInfo,
     connection: savedConnection,
     readOnly: false,
+    visible: true,
     schemaModel: undefined,
     refreshSchema: vi.fn(async () => {}),
     currentSchema: 'public',

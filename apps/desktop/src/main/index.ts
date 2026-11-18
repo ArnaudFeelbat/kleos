@@ -1,50 +1,59 @@
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BrowserWindow, app, ipcMain, nativeTheme, shell } from 'electron';
+import { BrowserWindow, app, ipcMain, shell } from 'electron';
 import { startServer, type RunningServer } from '@kleos/server';
-import { installMenu } from './menu';
+import { installMenu, type ShellCommand } from './menu';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const rendererDevUrl = process.env['ELECTRON_RENDERER_URL'];
+const isMac = process.platform === 'darwin';
 
 app.setName('Kleos');
 
 let server: RunningServer | null = null;
-let startWindow: BrowserWindow | null = null;
-/** One window per open session. */
-const workspaceWindows = new Map<string, BrowserWindow>();
+/** One window; each connected server is a tab inside it. */
+let mainWindow: BrowserWindow | null = null;
 const token = randomBytes(32).toString('hex');
 /** Set once a quit starts, so macOS `activate` cannot re-open a window and cancel it. */
 let quitting = false;
 
-function rendererUrl(hash: string): string {
-  const base = rendererDevUrl ?? `${server!.url}/`;
-  return `${base}${hash}`;
+function rendererUrl(): string {
+  return rendererDevUrl ?? `${server!.url}/`;
 }
 
 function allowedOrigin(url: string): boolean {
-  const origin = new URL(url).origin;
-  return origin === new URL(rendererUrl('')).origin;
+  return new URL(url).origin === new URL(rendererUrl()).origin;
 }
 
-function createWindow(options: { width: number; height: number; title: string; hash: string }): BrowserWindow {
+export function openMainWindow(): void {
+  if (quitting) return;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.focus();
+    return;
+  }
   const win = new BrowserWindow({
-    width: options.width,
-    height: options.height,
-    minWidth: 820,
-    minHeight: 560,
-    title: options.title,
+    width: 1440,
+    height: 900,
+    minWidth: 900,
+    minHeight: 580,
+    title: 'Kleos',
     show: false,
     titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 14, y: 13 },
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#09090b' : '#ffffff',
+    trafficLightPosition: { x: 16, y: 14 },
+    // Native sidebar material behind the translucent panes; the content panels stay opaque.
+    ...(isMac ? { vibrancy: 'sidebar' as const, visualEffectState: 'followWindow' as const } : {}),
+    backgroundColor: isMac ? '#00000000' : '#ffffff',
     webPreferences: {
       preload: join(here, '../preload/index.cjs'),
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
-      additionalArguments: [`--kleos-api=${server!.url}`, `--kleos-token=${token}`],
+      additionalArguments: [
+        `--kleos-api=${server!.url}`,
+        `--kleos-token=${token}`,
+        `--kleos-vibrancy=${isMac ? 1 : 0}`,
+      ],
     },
   });
   win.once('ready-to-show', () => win.show());
@@ -56,55 +65,33 @@ function createWindow(options: { width: number; height: number; title: string; h
   win.webContents.on('will-navigate', (event, url) => {
     if (!allowedOrigin(url)) event.preventDefault();
   });
-  void win.loadURL(rendererUrl(options.hash));
-  return win;
-}
-
-export function openStartWindow(): void {
-  if (quitting) return;
-  if (startWindow && !startWindow.isDestroyed()) {
-    startWindow.focus();
-    return;
-  }
-  startWindow = createWindow({ width: 1100, height: 720, title: 'Kleos', hash: '#/' });
-  startWindow.on('closed', () => {
-    startWindow = null;
-  });
-}
-
-function openWorkspaceWindow(args: { sid: string; title: string }): void {
-  const existing = workspaceWindows.get(args.sid);
-  if (existing && !existing.isDestroyed()) {
-    existing.focus();
-    return;
-  }
-  const win = createWindow({
-    width: 1440,
-    height: 900,
-    title: args.title,
-    hash: `#/w/${encodeURIComponent(args.sid)}`,
-  });
-  workspaceWindows.set(args.sid, win);
   win.on('closed', () => {
-    workspaceWindows.delete(args.sid);
-    void server?.closeSession(args.sid);
+    mainWindow = null;
+    // Every tab's session belonged to this window.
+    void server?.deps.sessions.closeAll();
   });
+  void win.loadURL(rendererUrl());
+  mainWindow = win;
 }
 
-ipcMain.handle('kleos:open-workspace', (_event, args: { sid: string; title: string; color: string }) => {
-  if (typeof args?.sid !== 'string' || typeof args.title !== 'string') return;
-  openWorkspaceWindow(args);
-});
+function sendCommand(command: ShellCommand): void {
+  const target = BrowserWindow.getFocusedWindow() ?? mainWindow;
+  if (target && !target.isDestroyed()) target.webContents.send('kleos:command', command);
+}
 
 ipcMain.on('kleos:set-title', (event, title: unknown) => {
   if (typeof title !== 'string') return;
   BrowserWindow.fromWebContents(event.sender)?.setTitle(title);
 });
 
+ipcMain.on('kleos:close-window', (event) => {
+  BrowserWindow.fromWebContents(event.sender)?.close();
+});
+
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on('second-instance', () => openStartWindow());
+  app.on('second-instance', () => openMainWindow());
 
   void app.whenReady().then(async () => {
     server = await startServer({
@@ -115,11 +102,11 @@ if (!app.requestSingleInstanceLock()) {
       allowedOrigins: rendererDevUrl ? [new URL(rendererDevUrl).origin] : [],
       version: app.getVersion(),
     });
-    installMenu({ openStartWindow });
-    openStartWindow();
+    installMenu({ openMainWindow, sendCommand });
+    openMainWindow();
 
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) openStartWindow();
+      if (BrowserWindow.getAllWindows().length === 0) openMainWindow();
     });
   });
 

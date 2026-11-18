@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
 import { api, ApiError, errorText, queryKeys } from '@/lib/api';
-import { getBridge } from '@/lib/bridge';
+import { tabsStore } from '@/features/shell/tabs-store';
 
 export type PasswordPrompt = {
   connection: SavedConnection;
@@ -18,7 +18,8 @@ export function isPasswordRequired(err: unknown): boolean {
 
 /**
  * Connect flow: POST /sessions, prompting for a password when the favorite has none saved
- * (401 KLEOS_PASSWORD_REQUIRED), then asks the main process to open the workspace window.
+ * (401 KLEOS_PASSWORD_REQUIRED), then opens the server in its own window tab. A favorite that
+ * already has a tab is brought to front instead: one tab per server.
  */
 export function useConnect() {
   const queryClient = useQueryClient();
@@ -27,15 +28,16 @@ export function useConnect() {
 
   const open = useCallback(async (connection: SavedConnection, password: string | null) => {
     const session = await api.openSession({ connectionId: connection.id, password });
-    await getBridge().openWorkspace({
-      sid: session.sid,
-      title: session.connection.nickname,
-      color: session.connection.color,
-    });
+    tabsStore.open(session);
   }, []);
 
   const connect = useCallback(
     async (connection: SavedConnection, password: string | null = null) => {
+      const existing = tabsStore.findByConnection(connection.id);
+      if (existing) {
+        tabsStore.activate(existing.sid);
+        return;
+      }
       setConnectingId(connection.id);
       try {
         await open(connection, password);

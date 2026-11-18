@@ -106,6 +106,7 @@ function renderTab(overrides: Partial<WorkspaceState> = {}) {
     session: {} as WorkspaceState['session'],
     connection: { id: 'c1', nickname: 'shop_dev' } as WorkspaceState['connection'],
     readOnly: false,
+    visible: true,
     schemaModel: model,
     refreshSchema: async () => {},
     currentSchema: 'public',

@@ -1,7 +1,7 @@
 import { kleosErrorCodes, type SessionInfo, type TableRef } from '@kleos/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Activity, Code, Lock, Network, Table2, Unplug } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Activity, Code, LoaderCircle, Lock, Network, Table2, Unplug } from 'lucide-react';
+import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -19,11 +19,19 @@ export function isSessionGone(err: unknown): boolean {
   return err instanceof ApiError && (err.body.code === kleosErrorCodes.sessionNotFound || err.status === 404);
 }
 
+type Props = {
+  sid: string;
+  /** False while another connection tab (or the Connections home) is in front. */
+  visible?: boolean;
+  /** Closes this connection tab, e.g. after its session ended. */
+  onClose?: () => void;
+};
+
 /**
- * Workspace window for one session: title bar tinted by connection color, schema sidebar, and
- * the Schema / Data / Query / Monitor tabs. Provides WorkspaceContext.
+ * One connection's workspace, shown in its window tab: translucent schema sidebar and a
+ * raised content panel with the Schema / Data / Query / Monitor tabs. Provides WorkspaceContext.
  */
-export function WorkspaceScreen({ sid }: { sid: string }) {
+export function WorkspaceScreen({ sid, visible = true, onClose }: Props) {
   const session = useQuery({
     queryKey: queryKeys.session(sid),
     queryFn: () => api.getSession(sid),
@@ -32,23 +40,26 @@ export function WorkspaceScreen({ sid }: { sid: string }) {
 
   if (session.isPending) {
     return (
-      <Frame>
-        <p className="text-muted-foreground m-auto">Opening the session…</p>
-      </Frame>
+      <Centered>
+        <LoaderCircle className="text-muted-foreground size-5 animate-spin" aria-hidden="true" />
+        <p className="text-muted-foreground">Opening the session…</p>
+      </Centered>
     );
   }
   if (session.isError) {
     const gone = isSessionGone(session.error);
     return (
-      <Frame>
-        <div role="alert" className="m-auto flex max-w-md flex-col items-center gap-3 text-center">
-          <Unplug className="text-muted-foreground size-8" aria-hidden="true" />
+      <Centered>
+        <div role="alert" className="flex max-w-md flex-col items-center gap-3 text-center">
+          <span className="surface-raised flex size-11 items-center justify-center rounded-xl">
+            <Unplug className="text-muted-foreground size-5" aria-hidden="true" />
+          </span>
           <h1 className="text-[15px] font-semibold">
             {gone ? 'This session has ended' : 'Could not open the session'}
           </h1>
           <p className="text-muted-foreground">
             {gone
-              ? 'The database session behind this window no longer exists, usually because Kleos was restarted. Close this window and connect again from the start window.'
+              ? 'The database session behind this tab no longer exists. Close the tab and connect again.'
               : errorText(session.error)}
           </p>
           <div className="flex gap-2">
@@ -57,26 +68,22 @@ export function WorkspaceScreen({ sid }: { sid: string }) {
                 Retry
               </Button>
             )}
-            <Button size="sm" onClick={() => window.close()}>
-              Close window
-            </Button>
+            {onClose && (
+              <Button size="sm" onClick={onClose}>
+                Close tab
+              </Button>
+            )}
           </div>
         </div>
-      </Frame>
+      </Centered>
     );
   }
-  return <Workspace sid={sid} session={session.data} />;
+  return <Workspace sid={sid} session={session.data} visible={visible} />;
 }
 
-/** Title bar + body used while the session loads or failed. */
-function Frame({ children }: { children: ReactNode }) {
+function Centered({ children }: { children: ReactNode }) {
   return (
-    <div className="flex h-full flex-col">
-      <header className="app-drag bg-chrome flex h-10 shrink-0 items-center border-b pl-20 font-semibold">
-        <span className="flex-1 pr-20 text-center">Kleos</span>
-      </header>
-      <div className="flex min-h-0 flex-1 p-6">{children}</div>
-    </div>
+    <div className="bg-background flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6">{children}</div>
   );
 }
 
@@ -87,17 +94,13 @@ const tabs: { value: WorkspaceTab; label: string; icon: ReactNode }[] = [
   { value: 'monitor', label: 'Monitor', icon: <Activity aria-hidden="true" /> },
 ];
 
-function Workspace({ sid, session }: { sid: string; session: SessionInfo }) {
-  const state = useWorkspaceState(sid, session);
+function Workspace({ sid, session, visible }: { sid: string; session: SessionInfo; visible: boolean }) {
+  const state = useWorkspaceState(sid, session, visible);
   const [visited, setVisited] = useState<ReadonlySet<WorkspaceTab>>(() => new Set([state.activeTab]));
   const [slot, setSlot] = useState<HTMLDivElement | null>(null);
   const { connection } = session;
 
   if (!visited.has(state.activeTab)) setVisited(new Set([...visited, state.activeTab]));
-
-  useEffect(() => {
-    window.kleos?.setTitle(connection.nickname);
-  }, [connection.nickname]);
 
   const content: Record<WorkspaceTab, ReactNode> = {
     schema: <SchemaTab />,
@@ -109,65 +112,58 @@ function Workspace({ sid, session }: { sid: string; session: SessionInfo }) {
   return (
     <WorkspaceContext.Provider value={state.value}>
       <TabToolbarSlotContext.Provider value={slot}>
-        <div className="flex h-full flex-col">
-          <header
-            data-tint={connection.color === 'none' ? undefined : connection.color}
-            className="app-drag bg-chrome flex h-10 shrink-0 items-center gap-3 border-b pr-3.5 pl-20"
+        <div className="flex min-h-0 flex-1">
+          <SchemaSidebar schemaError={state.schemaError} />
+          <Tabs
+            value={state.value.activeTab}
+            onValueChange={(v) => state.value.setActiveTab(v as WorkspaceTab)}
+            className="bg-background flex min-w-0 flex-1 flex-col gap-0 overflow-hidden rounded-tl-[10px] shadow-[0_0_0_1px_var(--edge),var(--elev-1)]"
           >
-            <div className="min-w-0 flex-1 truncate text-center font-semibold">
-              {connection.nickname}{' '}
-              <span className="text-muted-foreground font-normal">
-                — {connection.user}@{connection.host}:{connection.port}
-              </span>
-            </div>
-            {connection.readOnly && (
-              <Badge variant="outline" className="bg-background h-5 text-[11px]">
-                <Lock aria-hidden="true" />
-                Read-only
-              </Badge>
-            )}
-            <Badge variant="outline" className="bg-background h-5 font-mono text-[11px]" title={session.serverVersion}>
-              PG {session.serverVersionShort}
-            </Badge>
-          </header>
-
-          <div className="flex min-h-0 flex-1">
-            <SchemaSidebar schemaError={state.schemaError} />
-            <Tabs
-              value={state.value.activeTab}
-              onValueChange={(v) => state.value.setActiveTab(v as WorkspaceTab)}
-              className="flex min-w-0 flex-1 flex-col gap-0"
+            <div
+              data-tint={connection.color === 'none' ? undefined : connection.color}
+              className="bg-chrome flex min-h-12 flex-wrap items-center gap-3 border-b px-3 py-2"
             >
-              <div className="bg-background flex flex-wrap items-center gap-3 border-b px-4 py-2.5">
-                <TabsList aria-label="Workspace" className="h-[34px]">
-                  {tabs.map((t) => (
-                    <TabsTrigger
-                      key={t.value}
-                      value={t.value}
-                      className="h-7 flex-none px-3 text-[13px] [&_svg:not([class*='size-'])]:size-3.5"
-                    >
-                      {t.icon}
-                      {t.label}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-                <span className="flex-1" />
-                <div ref={setSlot} className="flex flex-wrap items-center gap-3" />
-              </div>
-              {tabs.map((t) =>
-                visited.has(t.value) ? (
-                  <TabsContent
+              <TabsList aria-label="Workspace" className="h-8">
+                {tabs.map((t) => (
+                  <TabsTrigger
                     key={t.value}
                     value={t.value}
-                    forceMount
-                    className="flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden"
+                    className="h-[26px] flex-none px-2.5 text-[12.5px] [&_svg:not([class*='size-'])]:size-3.5"
                   >
-                    {content[t.value]}
-                  </TabsContent>
-                ) : null,
+                    {t.icon}
+                    {t.label}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+              <span className="flex-1" />
+              <div ref={setSlot} className="flex flex-wrap items-center gap-2" />
+              {connection.readOnly && (
+                <Badge
+                  variant="outline"
+                  className="border-warning-line bg-warning-bg text-warning h-5"
+                  title="Edits are blocked and sessions start read-only"
+                >
+                  <Lock aria-hidden="true" />
+                  Read-only
+                </Badge>
               )}
-            </Tabs>
-          </div>
+              <Badge variant="outline" className="h-5 font-mono" title={session.serverVersion}>
+                PG {session.serverVersionShort}
+              </Badge>
+            </div>
+            {tabs.map((t) =>
+              visited.has(t.value) ? (
+                <TabsContent
+                  key={t.value}
+                  value={t.value}
+                  forceMount
+                  className="flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden"
+                >
+                  {content[t.value]}
+                </TabsContent>
+              ) : null,
+            )}
+          </Tabs>
         </div>
       </TabToolbarSlotContext.Provider>
     </WorkspaceContext.Provider>
@@ -175,7 +171,7 @@ function Workspace({ sid, session }: { sid: string; session: SessionInfo }) {
 }
 
 /** Builds the WorkspaceState shared by every tab. */
-export function useWorkspaceState(sid: string, session: SessionInfo) {
+export function useWorkspaceState(sid: string, session: SessionInfo, visible = true) {
   const queryClient = useQueryClient();
   const schema = useQuery({
     queryKey: queryKeys.schema(sid),
@@ -189,7 +185,7 @@ export function useWorkspaceState(sid: string, session: SessionInfo) {
   const nonce = useRef(0);
 
   const schemaModel = schema.data;
-  // Until the user picks one, follow the model: "public" when present, else the first schema.
+  // Until the user picks one, follow the model: "public" when it has tables, else the busiest schema.
   const currentSchema =
     pickedSchema && (!schemaModel || schemaModel.schemas.includes(pickedSchema))
       ? pickedSchema
@@ -218,6 +214,7 @@ export function useWorkspaceState(sid: string, session: SessionInfo) {
       session,
       connection: session.connection,
       readOnly: session.connection.readOnly,
+      visible,
       schemaModel,
       refreshSchema,
       currentSchema,
@@ -232,6 +229,7 @@ export function useWorkspaceState(sid: string, session: SessionInfo) {
     [
       sid,
       session,
+      visible,
       schemaModel,
       refreshSchema,
       currentSchema,

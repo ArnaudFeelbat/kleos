@@ -181,7 +181,7 @@ export function QueryTab() {
   useEffect(() => {
     saveCurrent.current = () => saveTab(tab);
   });
-  const active = ws.activeTab === 'query';
+  const active = ws.visible && ws.activeTab === 'query';
   useEffect(() => {
     if (!active) return;
     const onKey = (e: KeyboardEvent) => {

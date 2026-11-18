@@ -4,6 +4,7 @@
 //
 //   node scripts/ui-tour.mjs '<pg json>' <screenshot dir>
 //   pg json: {"host":"127.0.0.1","port":55432,"user":"kleos","password":"…","database":"shop","schema":"shop","table":"orders"}
+// Opens two servers as window tabs, walks every screen, then repeats key screens in dark mode.
 import { spawn } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -122,6 +123,11 @@ async function connect(wsUrl) {
   };
   const type = (text) => call('Input.insertText', { text });
   const shot = async (name) => {
+    // CDP captures web content only: the native vibrancy behind translucent panes would
+    // come out black. Paint a stand-in close to macOS's sidebar material instead.
+    await evaluate(
+      `(() => { const h = document.documentElement; if (h.classList.contains('vibrancy')) h.style.backgroundColor = h.classList.contains('dark') ? '#2a2a2e' : '#e8e8eb'; })()`,
+    );
     const { data } = await call('Page.captureScreenshot', { format: 'jpeg', quality: 75 });
     const file = join(shotDir, `${name}.jpg`);
     writeFileSync(file, Buffer.from(data, 'base64'));
@@ -148,118 +154,169 @@ async function step(name, fn) {
 }
 
 try {
-  const start = await attach((url) => !url.includes('#/w/'));
-  current = start;
-  const nickname = 'tour-shop';
+  const win = await attach(() => true);
+  current = win;
+  const favorite = (nickname, color, readOnly) => ({
+    nickname,
+    host: pgInfo.host,
+    port: pgInfo.port,
+    user: pgInfo.user,
+    database: pgInfo.database,
+    sslMode: 'disable',
+    color,
+    readOnly,
+    password: null,
+    savePassword: false,
+  });
+  const createFavorite = (body) =>
+    win.evaluate(
+      `fetch(window.kleos.apiBase + '/api/connections', { method: 'POST', headers: { authorization: 'Bearer ' + window.kleos.token, 'content-type': 'application/json' }, body: JSON.stringify(${JSON.stringify(body)}) }).then((r) => r.status)`,
+    );
+  const tabButton = (name) =>
+    `[...document.querySelectorAll('nav[aria-label="Open connections"] button')].find((b) => b.textContent.trim() === ${JSON.stringify(name)})`;
+  const connectWithPassword = async (nickname) => {
+    await win.click(byText('nav[aria-label="Saved connections"] button', nickname), `favorite ${nickname}`, 2);
+    await win.click(`document.querySelector('#prompt-password')`, 'password field');
+    await win.type(pgInfo.password);
+    await win.key('Enter', 'Enter', 13);
+    await win.waitFor(
+      `${tabButton(nickname)}?.getAttribute('aria-current') === 'page'`,
+      `tab ${nickname} in front`,
+      20000,
+    );
+  };
+  const front = `[...document.querySelectorAll('nav[aria-label="Schema objects"]')].find((n) => n.offsetParent !== null)`;
+  const visible = (selector) =>
+    `[...document.querySelectorAll(${JSON.stringify(selector)})].filter((e) => e.offsetParent !== null)`;
 
-  await step('start window answers', () =>
-    start.waitFor(`document.querySelector('[data-testid=health]')?.textContent.includes('Server ok')`, 'health'),
+  await step('window answers', () =>
+    win.waitFor(`document.querySelector('[data-testid=health]')?.textContent.includes('Server ok')`, 'health'),
   );
-  await step('create a favorite (no saved password)', async () => {
-    await start.evaluate(
-      `fetch(window.kleos.apiBase + '/api/connections', { method: 'POST', headers: { authorization: 'Bearer ' + window.kleos.token, 'content-type': 'application/json' }, body: JSON.stringify(${JSON.stringify(
-        {
-          nickname,
-          host: pgInfo.host,
-          port: pgInfo.port,
-          user: pgInfo.user,
-          database: pgInfo.database,
-          sslMode: 'disable',
-          color: 'blue',
-          readOnly: false,
-          password: null,
-          savePassword: false,
-        },
-      )}) }).then((r) => r.status)`,
+  await step('two favorites on the Connections tab', async () => {
+    await createFavorite(favorite('shop (dev)', 'blue', false));
+    await createFavorite(favorite('shop (read-only)', 'red', true));
+    await win.evaluate('location.reload()');
+    await win.waitFor(
+      `${byText('nav[aria-label="Saved connections"] button', 'shop (dev)')} ? true : false`,
+      'favorites',
     );
-    await start.evaluate('location.reload()');
-    await start.waitFor(
-      `${byText('nav[aria-label="Saved connections"] button', nickname)} ? true : false`,
-      'favorite in list',
+    await sleep(500);
+    await win.shot('01-connections');
+  });
+  await step('connect the first server: password prompt, then its tab', async () => {
+    await win.click(byText('nav[aria-label="Saved connections"] button', 'shop (dev)'), 'favorite', 2);
+    await win.click(`document.querySelector('#prompt-password')`, 'password field');
+    await win.type(pgInfo.password);
+    await win.shot('02-password-prompt');
+    await win.key('Enter', 'Enter', 13);
+    await win.waitFor(
+      `${tabButton('shop (dev)')}?.getAttribute('aria-current') === 'page'`,
+      'first tab in front',
+      20000,
     );
-    await start.shot('01-connections');
+    await win.waitFor(`!!${front}`, 'schema sidebar');
+    await sleep(1200);
+    await win.shot('03-workspace');
   });
-  await step('double-click connects and prompts for the password', async () => {
-    await start.click(byText('nav[aria-label="Saved connections"] button', nickname), 'favorite', 2);
-    await start.click(`document.querySelector('#prompt-password')`, 'password field');
-    await start.type(pgInfo.password);
-    await start.shot('02-password-prompt');
-    await start.key('Enter', 'Enter', 13);
-  });
-
-  let ws;
-  await step('a workspace window opens', async () => {
-    ws = await attach((url) => url.includes('#/w/'), 20000);
-  });
-  current = ws;
-  await step('workspace opens with the schema sidebar', async () => {
-    await ws.waitFor(`!!document.querySelector('nav[aria-label="Schema objects"]')`, 'schema sidebar');
-    await sleep(800);
-    await ws.shot('03-workspace');
+  await step('a second server opens in its own tab', async () => {
+    await win.click(
+      `document.querySelector('nav[aria-label="Open connections"] button[aria-label="Connections"]')`,
+      'Connections tab',
+    );
+    await connectWithPassword('shop (read-only)');
+    await win.waitFor(`!!${front}`, 'second sidebar');
+    await sleep(1200);
+    await win.shot('04-second-tab');
+    await win.click(tabButton('shop (dev)'), 'first tab');
+    await sleep(400);
   });
   await step(`switch to schema ${pgInfo.schema}`, async () => {
-    await ws.click(`document.querySelector('aside [role=combobox]')`, 'schema picker');
-    await ws.click(byText('[role=option]', pgInfo.schema), `option ${pgInfo.schema}`);
-    await ws.waitFor(`document.querySelectorAll('.react-flow__node').length > 1`, 'diagram nodes', 20000);
+    await win.click(`${visible('aside [role=combobox]')}[0]`, 'schema picker');
+    await win.click(byText('[role=option]', pgInfo.schema), `option ${pgInfo.schema}`);
+    await win.waitFor(`${visible('.react-flow__node')}.length > 1`, 'diagram nodes', 20000);
     await sleep(1200);
-    await ws.shot('04-schema-diagram');
+    await win.shot('05-schema-diagram');
   });
-  await step(`select ${pgInfo.table} and open its data`, async () => {
-    await ws.click(byText('nav[aria-label="Schema objects"] button', pgInfo.table), 'table in sidebar');
-    await sleep(600);
-    await ws.shot('05-schema-detail');
-    await ws.click(byText('nav[aria-label="Schema objects"] button', pgInfo.table), 'table in sidebar', 2);
-    await ws.waitFor(`${byText('[role=tab]', 'Data')}?.getAttribute('aria-selected') === 'true'`, 'Data tab active');
-    await ws.waitFor(`document.querySelectorAll('[role=gridcell], [role=row]').length > 3`, 'grid rows', 20000);
+  await step(`open ${pgInfo.table} in Data`, async () => {
+    await win.click(
+      `[...${front}.querySelectorAll('button')].find((b) => b.textContent.trim().startsWith(${JSON.stringify(pgInfo.table)}))`,
+      'table',
+      2,
+    );
+    await win.waitFor(`${visible('[role=gridcell]')}.length > 3`, 'grid cells', 20000);
     await sleep(800);
-    await ws.shot('06-data-grid');
+    await win.shot('06-data-grid');
   });
-  await step('stage an edit and show the pending SQL', async () => {
-    await ws.click(`document.querySelectorAll('[role=gridcell]')[2]`, 'a cell', 2);
-    await sleep(400);
-    await ws.key('a', 'KeyA', 65, 4);
-    await ws.type('staged by the tour');
-    await ws.key('Enter', 'Enter', 13);
+  await step('stage an edit', async () => {
+    const cell = `${visible('[role=gridcell]')}.find((c) => c.getAttribute('aria-colindex') === '6' || c.textContent.trim() === '')`;
+    await win.click(`${cell} ?? ${visible('[role=gridcell]')}[5]`, 'a text cell', 2);
+    await sleep(300);
+    await win.key('a', 'KeyA', 65, 4);
+    await win.type('staged by the tour');
+    await win.key('Enter', 'Enter', 13);
     await sleep(600);
-    await ws.shot('07-data-staged');
+    await win.shot('07-data-staged');
   });
   await step('run a query', async () => {
-    await ws.click(byText('[role=tab]', 'Query'), 'Query tab');
-    await ws.click(`document.querySelector('.cm-content')`, 'editor');
-    await ws.key('a', 'KeyA', 65, 4);
-    await ws.type(
-      `select date_trunc('hour', now()) - (g || ' hours')::interval as hour,\n       (random() * 100)::int as web,\n       (random() * 60)::int as ios,\n       (random() * 30)::int as android\nfrom generate_series(1, 48) g\norder by 1;`,
+    await win.click(`${visible('[role=tab]')}.find((t) => t.textContent.trim() === 'Query')`, 'Query tab');
+    await win.click(`${visible('.cm-content')}[0]`, 'editor');
+    await win.key('a', 'KeyA', 65, 4);
+    await win.type(
+      `select date_trunc('hour', now()) - (g || ' hours')::interval as hour,\n       (40 + 30 * sin(g / 4.0))::int as web,\n       (25 + 12 * cos(g / 5.0))::int as ios,\n       (12 + 6 * sin(g / 3.0))::int as android\nfrom generate_series(1, 48) g\norder by 1;`,
     );
-    await ws.key('Enter', 'Enter', 13, 4);
-    await ws.waitFor(`document.body.innerText.match(/48 rows/)`, 'result count', 20000);
+    await win.key('Enter', 'Enter', 13, 4);
+    await win.waitFor(`document.body.innerText.match(/48 rows/)`, 'result count', 20000);
     await sleep(600);
-    await ws.shot('08-query-results');
+    await win.shot('08-query-results');
   });
   await step('chart the results', async () => {
-    await ws.click(byText('[aria-label="Result view"] *', 'Chart'), 'Chart view');
+    await win.click(
+      `${visible('[aria-label="Result view"] *')}.find((e) => e.textContent.trim() === 'Chart')`,
+      'Chart view',
+    );
     await sleep(1500);
-    await ws.shot('09-query-chart');
+    await win.shot('09-query-chart');
   });
-  await step('explain the query', async () => {
-    await ws.click(`document.querySelector('.cm-content')`, 'editor');
-    await ws.key('e', 'KeyE', 69, 4);
-    await ws.waitFor(`document.body.innerText.match(/Execution|execution/)`, 'explain plan', 20000);
+  await step('explain', async () => {
+    await win.click(`${visible('.cm-content')}[0]`, 'editor');
+    await win.key('e', 'KeyE', 69, 4);
+    await win.waitFor(`document.body.innerText.match(/Execution/)`, 'explain', 20000);
     await sleep(600);
-    await ws.shot('10-explain');
+    await win.shot('10-explain');
   });
   await step('an error is underlined', async () => {
-    await ws.click(`document.querySelector('.cm-content')`, 'editor');
-    await ws.key('a', 'KeyA', 65, 4);
-    await ws.type(`select o.stauts from ${pgInfo.schema}.${pgInfo.table} o;`);
-    await ws.key('Enter', 'Enter', 13, 4);
-    await ws.waitFor(`document.body.innerText.includes('42703')`, 'error 42703', 20000);
+    await win.click(`${visible('.cm-content')}[0]`, 'editor');
+    await win.key('a', 'KeyA', 65, 4);
+    await win.type(`select o.stauts from ${pgInfo.schema}.${pgInfo.table} o;`);
+    await win.key('Enter', 'Enter', 13, 4);
+    await win.waitFor(`document.body.innerText.includes('42703')`, 'error 42703', 20000);
     await sleep(500);
-    await ws.shot('11-query-error');
+    await win.shot('11-query-error');
   });
-  await step('monitor panels', async () => {
-    await ws.click(byText('[role=tab]', 'Monitor'), 'Monitor tab');
+  await step('monitor', async () => {
+    await win.click(`${visible('[role=tab]')}.find((t) => t.textContent.trim() === 'Monitor')`, 'Monitor tab');
     await sleep(11000);
-    await ws.shot('12-monitor');
+    await win.shot('12-monitor');
+  });
+  await step('dark mode', async () => {
+    await win.call('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] });
+    await sleep(800);
+    await win.shot('13-dark-monitor');
+    for (const [tab, name] of [
+      ['Data', '14-dark-data'],
+      ['Query', '15-dark-query'],
+      ['Schema', '16-dark-schema'],
+    ]) {
+      await win.click(`${visible('[role=tab]')}.find((t) => t.textContent.trim() === ${JSON.stringify(tab)})`, tab);
+      await sleep(900);
+      await win.shot(name);
+    }
+    await win.click(
+      `document.querySelector('nav[aria-label="Open connections"] button[aria-label="Connections"]')`,
+      'Connections tab',
+    );
+    await sleep(600);
+    await win.shot('17-dark-connections');
   });
   console.log('TOUR OK');
 } catch {

@@ -48,7 +48,7 @@ export function FavoritesList({ favorites, loading, error, selectedId, onSelect,
   const shown = useMemo(() => filterFavorites(favorites ?? [], search), [favorites, search]);
 
   return (
-    <aside className="bg-sidebar flex w-[300px] shrink-0 flex-col gap-3.5 border-r p-4">
+    <aside className="flex w-[280px] shrink-0 flex-col gap-3 px-3 pt-2 pb-3">
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-[15px] font-semibold">Favorites</h2>
         <Button variant="outline" size="sm" className="h-7 px-2.5 text-xs" onClick={onNew}>
