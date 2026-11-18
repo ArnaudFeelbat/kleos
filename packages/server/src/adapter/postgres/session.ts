@@ -20,7 +20,7 @@ import { introspect } from './introspect';
 import { QueryManager } from './query';
 import { estimateCount, exactCount, fetchRows } from './rows';
 import { StatsCollector } from './stats';
-import { TypeCache } from './types';
+import { type Queryable, TypeCache } from './types';
 
 export type SessionInit = {
   pool: pg.Pool;
@@ -53,7 +53,13 @@ export class PostgresSession implements Session {
     this.readOnly = init.readOnly;
     this.serverVersion = init.serverVersion;
     this.serverVersionShort = init.serverVersionShort;
-    this.queries = new QueryManager(init.pool, init.clientConfig, new TypeCache(init.pool), init.ownPids);
+    this.queries = new QueryManager(
+      init.pool,
+      init.clientConfig,
+      new TypeCache(init.pool),
+      init.ownPids,
+      init.readOnly,
+    );
     this.monitor = new StatsCollector(init.pool, init.ownPids, init.serverVersionNum);
   }
 
@@ -62,15 +68,26 @@ export class PostgresSession implements Session {
   }
 
   fetchRows(req: RowsRequest): Promise<RowsPage> {
-    return fetchRows(this.pool, req);
+    return this.withRawWhere(req.where, (q) => fetchRows(q, req));
   }
 
   estimateCount(req: CountRequest): Promise<CountResult> {
-    return estimateCount(this.pool, req);
+    return this.withRawWhere(req.where, (q) => estimateCount(q, req));
   }
 
   count(req: CountRequest): Promise<CountResult> {
-    return exactCount(this.pool, req);
+    return this.withRawWhere(req.where, (q) => exactCount(q, req));
+  }
+
+  /**
+   * The raw WHERE box is the user's own SQL on a pooled client. The extended protocol already
+   * refuses a second statement; on a read-only session it also runs inside BEGIN READ ONLY ...
+   * ROLLBACK, so a function it calls cannot write, and a setting it changes (set_config of
+   * default_transaction_read_only) is undone before the client goes back to the pool.
+   */
+  private withRawWhere<T>(where: string | undefined, run: (q: Queryable) => Promise<T>): Promise<T> {
+    if (!this.readOnly || !where?.trim()) return run(this.pool);
+    return inReadOnlyTransaction(this.pool, run);
   }
 
   applyEdits(edits: RowEdit[]): Promise<ApplyEditsResult> {
@@ -116,5 +133,26 @@ export class PostgresSession implements Session {
       await this.pool.end().catch(() => undefined);
     })();
     return this.closing;
+  }
+}
+
+/** Runs `run` on one pooled client inside BEGIN READ ONLY ... ROLLBACK. */
+async function inReadOnlyTransaction<T>(pool: pg.Pool, run: (q: Queryable) => Promise<T>): Promise<T> {
+  const client = await pool.connect();
+  let broken: Error | undefined;
+  try {
+    await client.query('begin transaction read only');
+    try {
+      return await run(client);
+    } finally {
+      try {
+        await client.query('rollback');
+      } catch (err) {
+        broken = err as Error;
+      }
+    }
+  } finally {
+    // A client whose ROLLBACK failed may still be in the transaction: destroy it.
+    client.release(broken);
   }
 }

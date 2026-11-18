@@ -34,8 +34,9 @@ function invalid(message: string, editIndex: number, column?: string): KleosErro
 }
 
 /**
- * Applies the edits in one transaction on a pooled client. Refuses read-only sessions and tables
- * without a primary key before touching anything. Each changed cell is its own UPDATE, so a
+ * Applies the edits in one transaction on a pooled client. Refuses read-only sessions, any edit
+ * of a view, materialized view or foreign table, and updates or deletes on a table without a
+ * primary key (inserts there are allowed) before touching anything. Each changed cell is its own UPDATE, so a
  * failure names the cell; any statement that affects a number of rows other than one, or any
  * error, rolls the whole batch back.
  */
@@ -124,11 +125,20 @@ function castOf(table: TableInfo, column: string, editIndex: number): string {
 
 /** Turns one edit into its statements, validating keys and columns against the catalog. */
 function planEdit(edit: RowEdit, index: number, table: TableInfo): Statement[] {
-  const editable = table.relkind === 'r' || table.relkind === 'p';
-  if (!editable || table.primaryKey.length === 0) {
+  const name = `${table.ref.schema}.${table.ref.name}`;
+  // Views, materialized views and foreign tables are never edited.
+  if (table.relkind !== 'r' && table.relkind !== 'p') {
     throw new KleosError(400, {
       code: kleosErrorCodes.noPrimaryKey,
-      message: `${table.ref.schema}.${table.ref.name} has no primary key, so it is read-only`,
+      message: `${name} is not a table, so it is read-only`,
+      editIndex: index,
+    });
+  }
+  // Without a primary key a row cannot be found again, but a new one can still be added.
+  if (edit.kind !== 'insert' && table.primaryKey.length === 0) {
+    throw new KleosError(400, {
+      code: kleosErrorCodes.noPrimaryKey,
+      message: `${name} has no primary key, so its rows can be inserted but not changed or deleted`,
       editIndex: index,
     });
   }

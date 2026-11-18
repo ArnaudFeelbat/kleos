@@ -1,5 +1,6 @@
 import type {
   ConnectionConfig,
+  GridLayout,
   HistoryEntry,
   LayoutPositions,
   NewHistoryEntry,
@@ -17,11 +18,16 @@ export interface AppStore {
   getConnection(id: string): SavedConnection | null;
   createConnection(config: ConnectionConfig, hasPassword: boolean): SavedConnection;
   updateConnection(id: string, config: ConnectionConfig, hasPassword: boolean): SavedConnection;
-  /** Also removes the connection's history, layouts and saved queries. */
+  /** Also removes the connection's history, layouts, grid layouts and saved queries. */
   deleteConnection(id: string): void;
 
   getLayout(connectionId: string, schema: string): LayoutPositions;
   saveLayout(connectionId: string, schema: string, layout: LayoutPositions): void;
+
+  /** A table's column order and widths in the Data tab; emptyGridLayout when none is saved. */
+  getGridLayout(connectionId: string, schema: string, table: string): GridLayout;
+  /** Replaces the saved layout; an unknown connection is a 404. */
+  saveGridLayout(connectionId: string, schema: string, table: string, layout: GridLayout): void;
 
   /** Newest first. */
   listHistory(connectionId: string, limit?: number): HistoryEntry[];

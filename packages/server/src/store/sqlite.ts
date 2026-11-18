@@ -4,7 +4,9 @@ import {
   ChartSettings,
   type ConnectionColor,
   type ConnectionConfig,
+  GridLayout,
   type HistoryEntry,
+  emptyGridLayout,
   type LayoutPositions,
   type NewHistoryEntry,
   type SavedConnection,
@@ -176,6 +178,22 @@ export function createSqliteStore(path: string): AppStore {
         `INSERT INTO layouts (connection_id, schema_name, positions, updated_at) VALUES (?, ?, ?, ?)
          ON CONFLICT (connection_id, schema_name) DO UPDATE SET positions = excluded.positions, updated_at = excluded.updated_at`,
       ).run(connectionId, schema, JSON.stringify(layout.positions), now());
+    },
+
+    getGridLayout(connectionId, schema, table): GridLayout {
+      const row = db
+        .prepare('SELECT layout FROM grid_layouts WHERE connection_id = ? AND schema_name = ? AND table_name = ?')
+        .get(connectionId, schema, table) as { layout: string } | undefined;
+      const saved = row ? GridLayout.safeParse(JSON.parse(row.layout)) : null;
+      // A copy: emptyGridLayout itself is shared.
+      return saved?.success ? saved.data : structuredClone(emptyGridLayout);
+    },
+    saveGridLayout(connectionId, schema, table, layout) {
+      requireConnection(connectionId);
+      db.prepare(
+        `INSERT INTO grid_layouts (connection_id, schema_name, table_name, layout, updated_at) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT (connection_id, schema_name, table_name) DO UPDATE SET layout = excluded.layout, updated_at = excluded.updated_at`,
+      ).run(connectionId, schema, table, JSON.stringify(layout), now());
     },
 
     listHistory(connectionId, limit = 200) {

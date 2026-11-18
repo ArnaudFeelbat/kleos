@@ -24,6 +24,55 @@ describe('layout routes', () => {
   });
 });
 
+describe('grid layout routes', () => {
+  it('returns the empty layout, then round-trips a saved one per table', async () => {
+    const { call, createConnection } = setup();
+    const c = await createConnection();
+    const schema = encodeURIComponent('sales data/2026');
+    const table = encodeURIComponent('order items.v2');
+    expect((await call('GET', `/grid-layouts/${c.id}/${schema}/${table}`)).body).toEqual({ order: [], widths: {} });
+
+    const layout = { order: ['total', 'id'], widths: { total: 180, 'unit price': 96 } };
+    const put = await call('PUT', `/grid-layouts/${c.id}/${schema}/${table}`, layout);
+    expect(put.status).toBe(204);
+    expect(put.body).toBeNull();
+    expect((await call('GET', `/grid-layouts/${c.id}/${schema}/${table}`)).body).toEqual(layout);
+    expect((await call('GET', `/grid-layouts/${c.id}/${schema}/orders`)).body).toEqual({ order: [], widths: {} });
+    expect((await call('GET', `/grid-layouts/${c.id}/public/${table}`)).body).toEqual({ order: [], widths: {} });
+
+    // A second save replaces the first.
+    await call('PUT', `/grid-layouts/${c.id}/${schema}/${table}`, { order: [], widths: { id: 40 } });
+    expect((await call('GET', `/grid-layouts/${c.id}/${schema}/${table}`)).body).toEqual({
+      order: [],
+      widths: { id: 40 },
+    });
+  });
+
+  it('validates the layout with the shared schema and refuses an unknown favorite', async () => {
+    const { call, createConnection } = setup();
+    const c = await createConnection();
+    const path = `/grid-layouts/${c.id}/public/orders`;
+    expect((await call('PUT', path, { order: ['id'] })).status).toBe(400);
+    expect((await call('PUT', path, { order: ['id'], widths: { id: 39 } })).status).toBe(400);
+    expect((await call('PUT', path, { order: ['id'], widths: { id: 2001 } })).status).toBe(400);
+    expect((await call('PUT', path, { order: ['id'], widths: { id: 120.5 } })).status).toBe(400);
+    expect((await call('PUT', path, { order: 'id', widths: {} })).status).toBe(400);
+    expect((await call('PUT', path, 'not json')).status).toBe(400);
+    expect((await call('GET', path)).body).toEqual({ order: [], widths: {} });
+    const unknown = await call('PUT', '/grid-layouts/nope/public/orders', { order: [], widths: {} });
+    expect(unknown.status).toBe(404);
+    expect((unknown.body as { code: string }).code).toBe('KLEOS_NOT_FOUND');
+  });
+
+  it('forgets the layouts of a deleted favorite', async () => {
+    const { call, createConnection } = setup();
+    const c = await createConnection();
+    await call('PUT', `/grid-layouts/${c.id}/public/orders`, { order: ['id'], widths: {} });
+    expect((await call('DELETE', `/connections/${c.id}`)).status).toBe(204);
+    expect((await call('GET', `/grid-layouts/${c.id}/public/orders`)).body).toEqual({ order: [], widths: {} });
+  });
+});
+
 describe('history routes', () => {
   const entry = (sql: string, ranAt: string): NewHistoryEntry => ({
     sql,

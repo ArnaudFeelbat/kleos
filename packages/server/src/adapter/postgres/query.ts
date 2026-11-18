@@ -36,6 +36,10 @@ type CursorRun = Running & {
   commandTag: string | null;
   /** Serializes reads of one cursor. */
   chain: Promise<unknown>;
+  /** Read-only sessions: the tab client whose READ ONLY transaction wraps this run; null until opened. */
+  guard: TabClient | null;
+  /** Set once the run has let go of its tab client (wrapping transaction ended); see release(). */
+  released: Promise<void> | null;
 };
 
 type ExplainRun = Running & { kind: 'explain' };
@@ -51,6 +55,16 @@ const CANCEL_ATTEMPTS = 5;
 /**
  * Query tabs: one dedicated client per tab (opened on first use), one server-side cursor per
  * running query, cancel from a pooled connection with pg_cancel_backend.
+ *
+ * On a read-only session every statement runs inside a transaction Kleos opens as
+ * BEGIN READ ONLY and pins with a first query, and ends with ROLLBACK once the statement is
+ * finished, failed, cancelled or closed. Postgres then refuses every write whatever the user
+ * types: SET TRANSACTION READ WRITE (and BEGIN READ WRITE, which tries the same) fails with
+ * "must be called before any query"; SET default_transaction_read_only, SET SESSION
+ * CHARACTERISTICS and set_config are undone by the ROLLBACK; a COMMIT or ROLLBACK typed by the
+ * user only ends the wrapper early (the next statement is wrapped again); procedures and DO
+ * blocks cannot commit inside it. Read-write sessions run statements bare, so user
+ * transactions span runs as before.
  */
 export class QueryManager {
   private readonly tabs = new Map<string, Promise<TabClient>>();
@@ -62,6 +76,7 @@ export class QueryManager {
     private readonly typeCache: TypeCache,
     /** Backend pids opened by this session, for the Sessions panel's isSelf. */
     private readonly ownPids: Set<number>,
+    private readonly readOnly: boolean,
   ) {}
 
   async runQuery(sql: string, { qid, tabId, pageSize }: QueryOptions): Promise<QueryStarted> {
@@ -79,12 +94,15 @@ export class QueryManager {
       finished: false,
       commandTag: null,
       chain: Promise.resolve(),
+      guard: null,
+      released: null,
     };
     // Registered before anything is awaited, so a cancel can find it at any point.
     this.runs.set(qid, run);
     try {
       // An open cursor holds the tab's client: close whatever still runs on this tab
-      // (and a previous run under the same qid).
+      // (and a previous run under the same qid). closeRun waits until each has ended its
+      // wrapping transaction, so this run's BEGIN cannot be overtaken by their ROLLBACK.
       const others = [...this.runs.values()].filter(
         (other) => other.tabId === tabId && other.kind === 'cursor' && other !== run,
       );
@@ -93,6 +111,10 @@ export class QueryManager {
       const tab = await this.tabClient(tabId);
       run.pid = tab.pid;
       if (run.cancelRequested) throw queryCanceledError();
+      if (this.readOnly) {
+        await this.beginReadOnly(run, tab);
+        if (run.cancelRequested) throw queryCanceledError();
+      }
 
       const cursor = new Cursor<CellValue[]>(sql, undefined, { rowMode: 'array', types: textTypes });
       captureCommandTag(cursor, run);
@@ -111,7 +133,8 @@ export class QueryManager {
         elapsedMs: Math.round(performance.now() - started),
       };
     } catch (err) {
-      this.forget(run);
+      // Closes a cursor left open (e.g. column lookup failed) and ends the wrapping transaction.
+      await this.closeRun(run).catch(() => undefined);
       throw err;
     }
   }
@@ -167,6 +190,11 @@ export class QueryManager {
       if (run.executing && run.pid !== null) await this.signal(run.pid).catch(() => undefined);
       return;
     }
+    await this.closeCursor(run);
+    await this.release(run);
+  }
+
+  private async closeCursor(run: CursorRun): Promise<void> {
     if (!run.cursor || run.finished) return;
     const cursor = run.cursor;
     if (run.executing && run.pid !== null) {
@@ -184,8 +212,42 @@ export class QueryManager {
   }
 
   /**
+   * Read-only sessions: opens the READ ONLY transaction that wraps one run. The `select 1` takes
+   * the transaction's first snapshot, after which Postgres refuses to switch it to read-write.
+   */
+  private async beginReadOnly(run: CursorRun, tab: TabClient): Promise<void> {
+    if (run.released) throw queryCanceledError();
+    run.guard = tab;
+    await tab.client.query('begin transaction read only; select 1');
+  }
+
+  /**
+   * Ends the run's wrapping transaction, if it opened one. Idempotent: every caller gets the
+   * same promise, settled once the tab client is free for the next run. A ROLLBACK that fails
+   * leaves the client in an unknown state, so the client is dropped and the next run opens a
+   * fresh one.
+   */
+  private release(run: CursorRun): Promise<void> {
+    run.released ??= (async () => {
+      const tab = run.guard;
+      if (!tab) return;
+      try {
+        await tab.client.query('rollback');
+      } catch {
+        const current = this.tabs.get(run.tabId);
+        if (current && (await current.catch(() => null)) === tab && this.tabs.get(run.tabId) === current) {
+          this.tabs.delete(run.tabId);
+        }
+        await endClient(tab, this.ownPids);
+      }
+    })();
+    return run.released;
+  }
+
+  /**
    * EXPLAIN (ANALYZE, FORMAT JSON) on a pooled client inside BEGIN ... ROLLBACK, so even a write
-   * never sticks. Cancellable by qid like a query.
+   * never sticks (BEGIN READ ONLY on a read-only session, so a write fails). Cancellable by qid
+   * like a query.
    */
   async explain(sql: string, { qid, tabId }: { qid: string; tabId: string }): Promise<ExplainResult> {
     const previous = this.runs.get(qid);
@@ -199,7 +261,7 @@ export class QueryManager {
       client = await this.pool.connect();
       run.pid = backendPid(client);
       if (run.cancelRequested) throw queryCanceledError();
-      await client.query('begin');
+      await client.query(this.readOnly ? 'begin transaction read only' : 'begin');
       try {
         run.executing = true;
         const result = await dataQuery(client, `explain (analyze, format json) ${sql}`);
@@ -306,12 +368,17 @@ export class QueryManager {
           for (const row of read.rows) run.buffer.push(row);
           if (read.rows.length < need) run.finished = true;
         } catch (err) {
+          // Cleared before the ROLLBACK, so a repeated cancel signal is not aimed at it.
+          run.executing = false;
           run.finished = true;
+          await this.release(run);
           throw err;
         } finally {
           run.executing = false;
         }
       }
+      // The portal is done: end the wrapping transaction before the rows are handed back.
+      if (run.finished) await this.release(run);
       const rows = run.buffer.splice(0, size);
       return { rows, hasMore: run.buffer.length > 0, result };
     });

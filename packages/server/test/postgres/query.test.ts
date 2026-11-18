@@ -93,6 +93,32 @@ describe('runQuery', () => {
     expect((await session.count({ table, filters: [], where })).count).toBe('0');
   });
 
+  it('commits a transaction spanning several runs on a read-write tab', async () => {
+    const opts = { tabId: 'tx-commit', pageSize: 100 };
+    const table = { schema: 'shop', name: 'audit_log' };
+    const where = `message like 'committed %'`;
+    expect(await session.runQuery('begin', { qid: 'tc1', ...opts })).toMatchObject({ command: 'BEGIN' });
+    await session.runQuery(`insert into shop.audit_log (message) values ('committed 1')`, { qid: 'tc2', ...opts });
+    const paged = await session.runQuery('select g from generate_series(1, 50) g', {
+      qid: 'tc3',
+      ...opts,
+      pageSize: 10,
+    });
+    expect(paged.hasMore).toBe(true);
+    await session.runQuery(`insert into shop.audit_log (message) values ('committed 2')`, { qid: 'tc4', ...opts });
+    const inside = await session.runQuery(`select count(*) from shop.audit_log where ${where}`, {
+      qid: 'tc5',
+      ...opts,
+    });
+    expect(inside.rows).toEqual([['2']]);
+    expect((await session.count({ table, filters: [], where })).count).toBe('0');
+    expect(await session.runQuery('commit', { qid: 'tc6', ...opts })).toMatchObject({ command: 'COMMIT' });
+    expect((await session.count({ table, filters: [], where })).count).toBe('2');
+    // Session settings stick across runs on a read-write tab.
+    await session.runQuery('set statement_timeout = 12345', { qid: 'tc8', ...opts });
+    expect((await session.runQuery('show statement_timeout', { qid: 'tc9', ...opts })).rows).toEqual([['12345ms']]);
+  });
+
   it('rethrows Postgres errors untouched, keeping the position of the failing token', async () => {
     const err = await rejectionOf(
       session.runQuery('select nope from shop.customers', { qid: 'bad', tabId: 'errors', pageSize: 10 }),

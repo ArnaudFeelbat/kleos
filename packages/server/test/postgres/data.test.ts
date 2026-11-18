@@ -404,16 +404,68 @@ describe('applyEdits', () => {
     expect(await customerName(1)).toBe('Ada');
   });
 
-  it('refuses tables without a primary key, and views, with KLEOS_NO_PRIMARY_KEY', async () => {
-    for (const table of [
-      { schema: 'shop', name: 'audit_log' },
-      { schema: 'shop', name: 'order_totals' },
-    ]) {
-      const err = kleos(await rejectionOf(session.applyEdits([{ kind: 'delete', table, key: { message: 'seeded' } }])));
+  it('refuses updates and deletes on a table without a primary key with KLEOS_NO_PRIMARY_KEY', async () => {
+    const auditLog = { schema: 'shop', name: 'audit_log' };
+    for (const edit of [
+      { kind: 'delete', table: auditLog, key: { message: 'seeded' } },
+      { kind: 'update', table: auditLog, key: { message: 'seeded' }, set: { message: 'changed' } },
+    ] as const) {
+      const err = kleos(await rejectionOf(session.applyEdits([edit])));
       expect(err.status).toBe(400);
-      expect(err.body.code).toBe(kleosErrorCodes.noPrimaryKey);
+      expect(err.body).toMatchObject({ code: kleosErrorCodes.noPrimaryKey, editIndex: 0 });
     }
     expect((await db.sql('select count(*)::int as n from shop.audit_log')).rows[0].n).toBe(2);
+    expect((await db.sql(`select count(*)::int as n from shop.audit_log where message = 'seeded'`)).rows[0].n).toBe(1);
+  });
+
+  it('inserts into a table without a primary key and returns the inserted row', async () => {
+    const auditLog = { schema: 'shop', name: 'audit_log' };
+    const result = await session.applyEdits([
+      { kind: 'insert', table: auditLog, values: { message: 'from the grid' } },
+      { kind: 'insert', table: auditLog, values: {} },
+    ]);
+    expect(result.applied).toBe(2);
+    expect(result.columns.map((c) => c.name)).toEqual(['at', 'message']);
+    expect(result.rows[0]).toEqual([expect.any(String), 'from the grid']);
+    // DEFAULT VALUES: the timestamp took its default, the message is null.
+    expect(result.rows[1]).toEqual([expect.any(String), null]);
+    expect((await db.sql('select count(*)::int as n from shop.audit_log')).rows[0].n).toBe(4);
+  });
+
+  it('inserts into a partitioned table without a primary key, but refuses deleting from it', async () => {
+    await db.sql(`create table shop.events (day date not null, what text) partition by range (day);
+                  create table shop.events_2026 partition of shop.events for values from ('2026-01-01') to ('2027-01-01')`);
+    const events = { schema: 'shop', name: 'events' };
+    const result = await session.applyEdits([
+      { kind: 'insert', table: events, values: { day: '2026-11-18', what: 'launch' } },
+    ]);
+    expect(result.rows[0]).toEqual(['2026-11-18', 'launch']);
+    expect((await db.sql('select count(*)::int as n from shop.events_2026')).rows[0].n).toBe(1);
+    const err = kleos(
+      await rejectionOf(session.applyEdits([{ kind: 'delete', table: events, key: { day: '2026-11-18' } }])),
+    );
+    expect(err.body.code).toBe(kleosErrorCodes.noPrimaryKey);
+    expect((await db.sql('select count(*)::int as n from shop.events')).rows[0].n).toBe(1);
+  });
+
+  it('refuses every edit of a view or materialized view, inserts included', async () => {
+    await db.sql('create materialized view shop.customer_names as select id, name from shop.customers');
+    for (const table of [
+      { schema: 'shop', name: 'order_totals' },
+      { schema: 'shop', name: 'customer_names' },
+    ]) {
+      for (const edit of [
+        { kind: 'insert', table, values: {} },
+        { kind: 'delete', table, key: { id: '1' } },
+      ] as const) {
+        const err = kleos(await rejectionOf(session.applyEdits([edit])));
+        expect(err.status).toBe(400);
+        expect(err.body).toMatchObject({
+          code: kleosErrorCodes.noPrimaryKey,
+          message: expect.stringMatching(/not a table/),
+        });
+      }
+    }
   });
 
   it('refuses a key that does not name the primary-key columns', async () => {
