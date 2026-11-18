@@ -5,8 +5,8 @@ security reports are taken seriously.
 
 ## Reporting a vulnerability
 
-Please **do not open a public issue**. Use GitHub's private reporting instead:
-**Security › Report a vulnerability** on this repository. Include the version, steps to
+Please **do not open an issue** for a vulnerability. Contact the maintainer privately via
+the [GitHub profile](https://github.com/ArnaudFeelbat) instead, with the version, steps to
 reproduce, and the impact you expect.
 
 You can expect an acknowledgement within a few days and a fix or mitigation plan once the
