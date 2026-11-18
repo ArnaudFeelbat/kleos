@@ -1,5 +1,53 @@
 # Nouveautés de Kleos
 
+## Version 0.3.0 — 18 novembre 2026
+
+### Tout trouver avec ⌘K
+
+- **Une palette de commandes.** Appuyez sur ⌘K (ou cliquez sur « Search » en haut à
+  droite) et tapez quelques lettres pour aller directement où vous voulez :
+  - un serveur déjà ouvert ;
+  - une connexion enregistrée, pour l'ouvrir (le mot de passe est demandé si besoin) ;
+  - n'importe quelle table ou vue, sur tous les serveurs ouverts à la fois ;
+  - une requête enregistrée, avec son graphique ;
+  - une action : passer à Schéma, Données, Requête ou Monitoring, actualiser le schéma,
+    fermer l'onglet…
+- La recherche se fait par mots : taper « orders prod » trouve la table `orders` du serveur
+  « prod ».
+
+### Mode clair ou sombre, au choix
+
+- Kleos peut désormais suivre le réglage de votre Mac, ou rester toujours en mode clair ou
+  toujours en mode sombre.
+- Trois façons de changer : le menu **View › Appearance**, le raccourci ⌘⇧L (bascule
+  clair / sombre), ou la palette ⌘K (tapez « appearance », « light » ou « dark »).
+- Votre choix est mémorisé d'un lancement à l'autre.
+
+### Données et requêtes
+
+- **Filtres modifiables.** Cliquez sur un filtre pour le corriger (colonne, condition,
+  valeur) au lieu de devoir le supprimer et le recréer.
+- **Colonnes à votre goût.** Glissez un en-tête de colonne pour la déplacer et ajustez sa
+  largeur : Kleos s'en souvient pour chaque table. « Reset columns » remet tout
+  comme au départ. Au clavier : ⌥← et ⌥→ déplacent la colonne sélectionnée.
+- **Plus de requête perdue.** Cliquer sur une requête de l'historique ne remplace plus votre
+  texte sans prévenir : Kleos propose de l'ouvrir dans un nouvel onglet, de remplacer, ou
+  d'annuler.
+- **Tables sans clé primaire.** Vous pouvez désormais y ajouter des lignes. Les lignes
+  existantes restent protégées : sans clé primaire, impossible de savoir avec certitude
+  laquelle modifier ou supprimer.
+
+### Lecture seule vraiment étanche
+
+- Sur une connexion en lecture seule, plus aucun moyen d'écrire, même en tapant une commande
+  qui tente de réactiver l'écriture dans l'éditeur de requêtes.
+- **Bon à savoir :** en lecture seule, chaque requête s'exécute de façon isolée. Un réglage
+  comme `SET search_path` ne s'applique donc qu'à la requête en cours, et les commandes de
+  maintenance (`VACUUM`, `CREATE INDEX CONCURRENTLY`…) ne sont pas disponibles. Utilisez une
+  connexion en écriture pour ces opérations.
+
+---
+
 ## Version 0.2.0 — 18 novembre 2026
 
 ### Plusieurs serveurs dans une seule fenêtre
