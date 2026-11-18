@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Kleos — Monitor</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.kl{--bg:#ffffff;--fg:#09090b;--card:#ffffff;--muted:#f4f4f5;--muted-fg:#5f5f67;--border:#e4e4e7;--input:#d4d4d8;--primary:#18181b;--primary-fg:#fafafa;--accent:#f4f4f5;--ring:#18181b;--sidebar:#fafafa;--chrome:#fde8e8;--destructive:#dc2626;--destructive-fg:#ffffff;--gridline:#ececef;--c1:#2a78d6;--track:#eef2f8;--ok:#15803d;--warn:#b45309;--warn-bg:#fffbeb;--warn-line:#fde68a;font-family:Geist,system-ui,sans-serif;color:var(--fg);background:var(--bg);font-size:13px;line-height:1.45;-webkit-font-smoothing:antialiased}
+.kl.dark{--bg:#09090b;--fg:#fafafa;--card:#111113;--muted:#27272a;--muted-fg:#a1a1aa;--border:#27272a;--input:#3f3f46;--primary:#fafafa;--primary-fg:#18181b;--accent:#1f1f23;--ring:#d4d4d8;--sidebar:#0c0c0e;--chrome:#3b1214;--destructive:#ef4444;--destructive-fg:#fafafa;--gridline:#232327;--c1:#3987e5;--track:#18202c;--ok:#4ade80;--warn:#fbbf24;--warn-bg:#2a1a04;--warn-line:#713f12}
+.kl *{box-sizing:border-box}
+.mono{font-family:"Geist Mono",ui-monospace,monospace}
+.muted{color:var(--muted-fg)}
+.i{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 12px;border-radius:6px;font:500 13px/1 Geist,system-ui,sans-serif;border:1px solid transparent;cursor:pointer;white-space:nowrap;text-decoration:none;background:transparent;color:var(--fg)}
+.btn-p{background:var(--primary);color:var(--primary-fg)}
+.btn-o{background:var(--bg);border-color:var(--border);box-shadow:0 1px 2px rgba(0,0,0,.05)}
+.btn-d{background:var(--destructive);color:var(--destructive-fg)}
+.btn-sm{height:28px;padding:0 10px;font-size:12px}
+.btn-icon{width:32px;padding:0}
+.input{height:32px;width:100%;border:1px solid var(--input);border-radius:6px;background:var(--bg);color:var(--fg);padding:0 10px;font:400 13px Geist,system-ui,sans-serif}
+.badge{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;border-radius:9999px;font-size:11px;font-weight:500;border:1px solid var(--border);white-space:nowrap}
+.b-warn{color:var(--warn);background:var(--warn-bg);border-color:var(--warn-line)}
+.tl{width:12px;height:12px;border-radius:50%;display:inline-block}
+.navi{display:flex;align-items:center;gap:8px;height:28px;padding:0 8px;border-radius:6px;color:var(--fg);text-decoration:none}
+.navi:hover{background:var(--accent);color:var(--fg)}
+.navi .n{margin-left:auto;color:var(--muted-fg);font:400 11px "Geist Mono",monospace}
+.sect{display:flex;justify-content:space-between;padding:10px 8px 4px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--muted-fg)}
+.tabs{display:inline-flex;gap:2px;padding:3px;background:var(--muted);border-radius:8px}
+.tab{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 12px;border-radius:6px;color:var(--muted-fg);font-weight:500;text-decoration:none}
+.tab:hover{color:var(--fg)}
+.tab-on{background:var(--bg);color:var(--fg);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;min-width:0}
+.ph{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--border)}
+.ph h2{margin:0;font-size:14px;font-weight:600}
+.poll{margin-left:auto;display:inline-flex;align-items:center;gap:5px;font:400 11px "Geist Mono",monospace;color:var(--muted-fg)}
+.tbl{width:100%;border-collapse:separate;border-spacing:0;font-size:12px}
+.tbl th{height:34px;padding:0 12px;text-align:left;font-weight:500;color:var(--muted-fg);border-bottom:1px solid var(--border);white-space:nowrap}
+.tbl td{height:38px;padding:0 12px;border-bottom:1px solid var(--border);white-space:nowrap}
+.tbl tr:last-child td{border-bottom:0}
+.r{text-align:right!important;font-family:"Geist Mono",monospace}
+.bar{height:6px;border-radius:3px;background:var(--track);overflow:hidden;width:80px;display:inline-block;vertical-align:middle}
+.bar span{display:block;height:100%;background:var(--c1);border-radius:3px}
+.ylab{position:absolute;left:-44px;width:36px;text-align:right;font:400 11px "Geist Mono",monospace;color:var(--muted-fg);transform:translateY(-50%)}
+.xlab{position:absolute;top:0;font:400 11px "Geist Mono",monospace;color:var(--muted-fg);transform:translateX(-50%);white-space:nowrap}
+a{color:var(--fg)}a:hover{color:var(--muted-fg)}
+</style>
+</helmet>
+<div class="kl {{themeClass}}" style="width: 100%; min-height: 1180px; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 10px; overflow: hidden">
+  <header style="height: 40px; flex: none; display: flex; align-items: center; gap: 12px; padding: 0 14px; background: var(--chrome); border-bottom: 1px solid var(--border)">
+    <div style="display: flex; gap: 8px" aria-hidden="true"><span class="tl" style="background: #ff5f57"></span><span class="tl" style="background: #febc2e"></span><span class="tl" style="background: #28c840"></span></div>
+    <div style="flex: 1; text-align: center; font-weight: 600">analytics_prod <span class="muted" style="font-weight: 400">— readonly@db-prod-1.internal:5432</span></div>
+    <span class="badge" style="background: var(--bg)"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 11px; height: 11px"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>Read-only</span>
+    <span class="badge mono" style="background: var(--bg)">PG 15.8</span>
+  </header>
+
+  <div style="flex: 1; display: flex; flex-wrap: wrap; min-height: 0">
+    <aside style="flex: 1 1 248px; max-width: 100%; background: var(--sidebar); border-right: 1px solid var(--border); padding: 12px; display: flex; flex-direction: column; gap: 10px">
+      <button class="btn btn-o" type="button" style="justify-content: space-between; width: 100%" aria-haspopup="listbox" aria-label="Schema: analytics"><span style="display: flex; align-items: center; gap: 8px"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5v14a9 3 0 0 0 18 0V5"></path><path d="M3 12a9 3 0 0 0 18 0"></path></svg>analytics</span><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 15 5 5 5-5M7 9l5-5 5 5"></path></svg></button>
+      <div style="position: relative">
+        <svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="position: absolute; left: 10px; top: 8px"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
+        <input class="input" aria-label="Filter tables" placeholder="Filter" style="padding-left: 32px">
+      </div>
+      <nav aria-label="Schema objects" style="display: flex; flex-direction: column; gap: 1px">
+        <div class="sect"><span>Tables</span><span>5</span></div>
+        <a class="navi" href="Data.dc.html"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M3 15h18M9 3v18"></path></svg>accounts<span class="n">1,204</span></a>
+        <a class="navi" href="Data.dc.html"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M3 15h18M9 3v18"></path></svg>daily_rollups<span class="n">8,940</span></a>
+        <a class="navi" href="Data.dc.html"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M3 15h18M9 3v18"></path></svg>events<span class="n">48.2M</span></a>
+        <a class="navi" href="Data.dc.html"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M3 15h18M9 3v18"></path></svg>page_views<span class="n">122M</span></a>
+        <a class="navi" href="Data.dc.html"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M3 15h18M9 3v18"></path></svg>sessions<span class="n">3.1M</span></a>
+      </nav>
+      <div style="margin-top: auto; display: flex; align-items: center; gap: 8px; padding: 8px; border-top: 1px solid var(--border); font-size: 12px">
+        <span style="width: 8px; height: 8px; border-radius: 50%; background: #22c55e" aria-hidden="true"></span>
+        <span>Connected</span>
+        <span class="muted">· read-only sessions</span>
+      </div>
+    </aside>
+
+    <main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; background: var(--sidebar)">
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg)">
+        <nav class="tabs" aria-label="Workspace">
+          <a class="tab" href="Schema.dc.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><rect x="16" y="16" width="6" height="6" rx="1"></rect><rect x="2" y="16" width="6" height="6" rx="1"></rect><rect x="9" y="2" width="6" height="6" rx="1"></rect><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3M12 12V8"></path></svg>Schema</a>
+          <a class="tab" href="Data.dc.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M3 15h18M9 3v18"></path></svg>Data</a>
+          <a class="tab" href="Query.dc.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><path d="m16 18 6-6-6-6M8 6l-6 6 6 6"></path></svg>Query</a>
+          <a class="tab tab-on" href="Monitor.dc.html" aria-current="page"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>Monitor</a>
+        </nav>
+        <span style="flex: 1"></span>
+        <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px"><span style="width: 8px; height: 8px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 0 3px rgba(34,197,94,.2)" aria-hidden="true"></span>Live <span class="muted">· pauses when this tab is hidden</span></span>
+        <button class="btn btn-o btn-sm" type="button"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 13px; height: 13px"><path d="M10 4H6v16h4zM18 4h-4v16h4z"></path></svg>Pause</button>
+      </div>
+
+      <div style="padding: 16px; display: flex; flex-direction: column; gap: 16px">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px">
+          <div class="card" style="padding: 16px; display: flex; flex-direction: column; gap: 4px">
+            <span class="muted" style="font-size: 12px; font-weight: 500">Sessions</span>
+            <span style="font-size: 28px; font-weight: 600; letter-spacing: -0.02em" class="mono">37</span>
+            <span class="muted" style="font-size: 12px">14 active · 1 idle in transaction · max 100</span>
+          </div>
+          <div class="card" style="padding: 16px; display: flex; flex-direction: column; gap: 4px">
+            <span class="muted" style="font-size: 12px; font-weight: 500">Transactions / s</span>
+            <span style="font-size: 28px; font-weight: 600; letter-spacing: -0.02em" class="mono">1,436</span>
+            <span class="muted" style="font-size: 12px">Commits + rollbacks, last 5 s</span>
+          </div>
+          <div class="card" style="padding: 16px; display: flex; flex-direction: column; gap: 4px">
+            <span class="muted" style="font-size: 12px; font-weight: 500">Cache hit ratio</span>
+            <span style="font-size: 28px; font-weight: 600; letter-spacing: -0.02em" class="mono">99.2%</span>
+            <span class="muted" style="font-size: 12px">Shared blocks hit / (hit + read)</span>
+          </div>
+          <div class="card" style="padding: 16px; display: flex; flex-direction: column; gap: 4px; border-color: var(--warn-line); background: var(--warn-bg)">
+            <span style="font-size: 12px; font-weight: 500; color: var(--warn); display: inline-flex; gap: 6px; align-items: center"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4M12 17h.01"></path></svg>Blocked queries · warning</span>
+            <span style="font-size: 28px; font-weight: 600; letter-spacing: -0.02em" class="mono">2</span>
+            <span style="font-size: 12px">Longest wait <b class="mono" style="font-weight: 600">3m 58s</b> behind pid 48211</span>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px">
+          <section class="card" style="grid-column: span 2">
+            <div class="ph"><h2>Transactions per second</h2><span class="muted" style="font-size: 12px">last 15 minutes</span><span class="poll"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 11px; height: 11px"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path></svg>pg_stat_database · 5 s</span></div>
+            <div style="padding: 16px 20px 12px 64px">
+              <div style="position: relative; height: 200px">
+                <span class="ylab" style="top: 0%">1,800</span>
+                <span class="ylab" style="top: 33.33%">1,200</span>
+                <span class="ylab" style="top: 66.67%">600</span>
+                <span class="ylab" style="top: 100%">0</span>
+                <svg viewBox="0 0 1000 160" preserveAspectRatio="none" role="img" aria-label="Transactions per second over the last 15 minutes, between about 1,100 and 1,450, now 1,436" style="position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible">
+                  <path d="M0 0H1000M0 53.33H1000M0 106.67H1000" fill="none" stroke="var(--gridline)" stroke-width="1" vector-effect="non-scaling-stroke"></path>
+                  <path d="M0 160H1000" fill="none" stroke="var(--input)" stroke-width="1" vector-effect="non-scaling-stroke"></path>
+                  <path d="M838 0V160" fill="none" stroke="var(--muted-fg)" stroke-width="1" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"></path>
+                  <path d="M 0.0 50.8 L 5.6 50.4 L 11.2 51.4 L 16.8 50.6 L 22.3 49.7 L 27.9 52.8 L 33.5 56.3 L 39.1 53.9 L 44.7 55.6 L 50.3 57.5 L 55.9 54.0 L 61.5 54.2 L 67.0 51.8 L 72.6 51.9 L 78.2 51.0 L 83.8 53.4 L 89.4 52.5 L 95.0 49.9 L 100.6 49.7 L 106.1 48.0 L 111.7 46.8 L 117.3 49.9 L 122.9 48.0 L 128.5 47.4 L 134.1 48.8 L 139.7 52.1 L 145.3 49.5 L 150.8 49.7 L 156.4 48.2 L 162.0 45.5 L 167.6 44.0 L 173.2 41.0 L 178.8 41.7 L 184.4 39.6 L 189.9 40.0 L 195.5 36.9 L 201.1 34.2 L 206.7 37.0 L 212.3 39.6 L 217.9 41.6 L 223.5 38.3 L 229.1 38.8 L 234.6 37.9 L 240.2 39.3 L 245.8 39.2 L 251.4 40.0 L 257.0 41.1 L 262.6 40.5 L 268.2 39.9 L 273.7 37.0 L 279.3 35.7 L 284.9 32.7 L 290.5 31.1 L 296.1 31.1 L 301.7 31.1 L 307.3 33.5 L 312.8 31.1 L 318.4 31.1 L 324.0 31.1 L 329.6 31.1 L 335.2 31.1 L 340.8 33.2 L 346.4 31.1 L 352.0 31.1 L 357.5 32.6 L 363.1 35.7 L 368.7 33.2 L 374.3 31.1 L 379.9 34.0 L 385.5 31.9 L 391.1 32.5 L 396.6 35.0 L 402.2 36.5 L 407.8 34.6 L 413.4 31.9 L 419.0 35.2 L 424.6 34.4 L 430.2 37.6 L 435.8 36.0 L 441.3 37.2 L 446.9 34.5 L 452.5 31.1 L 458.1 31.1 L 463.7 31.1 L 469.3 32.5 L 474.9 35.5 L 480.4 34.8 L 486.0 38.1 L 491.6 40.2 L 497.2 40.9 L 502.8 40.1 L 508.4 42.6 L 514.0 45.8 L 519.6 43.2 L 525.1 44.5 L 530.7 41.3 L 536.3 38.4 L 541.9 39.3 L 547.5 39.6 L 553.1 39.4 L 558.7 38.4 L 564.2 37.7 L 569.8 37.3 L 575.4 36.5 L 581.0 33.3 L 586.6 33.3 L 592.2 33.8 L 597.8 32.2 L 603.4 34.1 L 608.9 35.5 L 614.5 32.1 L 620.1 31.9 L 625.7 31.6 L 631.3 35.1 L 636.9 35.7 L 642.5 35.1 L 648.0 38.5 L 653.6 37.7 L 659.2 36.8 L 664.8 39.9 L 670.4 39.0 L 676.0 34.7 L 681.6 31.2 L 687.2 28.4 L 692.7 27.0 L 698.3 27.8 L 703.9 26.9 L 709.5 27.5 L 715.1 27.5 L 720.7 27.6 L 726.3 26.4 L 731.8 26.9 L 737.4 31.1 L 743.0 32.5 L 748.6 34.4 L 754.2 32.3 L 759.8 34.1 L 765.4 36.4 L 770.9 36.8 L 776.5 35.4 L 782.1 38.2 L 787.7 39.5 L 793.3 40.7 L 798.9 38.3 L 804.5 38.8 L 810.1 36.2 L 815.6 38.6 L 821.2 39.7 L 826.8 38.7 L 832.4 35.9 L 838.0 36.3 L 843.6 38.2 L 849.2 40.9 L 854.7 40.7 L 860.3 42.9 L 865.9 40.7 L 871.5 38.3 L 877.1 40.6 L 882.7 42.2 L 888.3 40.0 L 893.9 39.0 L 899.4 36.8 L 905.0 37.9 L 910.6 40.5 L 916.2 42.0 L 921.8 39.9 L 927.4 41.5 L 933.0 42.6 L 938.5 43.2 L 944.1 43.8 L 949.7 44.4 L 955.3 41.4 L 960.9 43.9 L 966.5 47.4 L 972.1 44.3 L 977.7 41.6 L 983.2 38.1 L 988.8 38.6 L 994.4 35.4 L 1000.0 32.3" fill="none" stroke="var(--c1)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"></path>
+                </svg>
+                <span style="position: absolute; left: 83.8%; top: 22.69%; width: 10px; height: 10px; border-radius: 50%; background: var(--c1); transform: translate(-50%, -50%); box-shadow: 0 0 0 2px var(--card)" aria-hidden="true"></span>
+                <div role="tooltip" style="position: absolute; right: calc(16.2% + 14px); top: 34%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); box-shadow: 0 8px 24px rgba(0,0,0,.12); font-size: 12px; display: flex; flex-direction: column; gap: 2px; white-space: nowrap">
+                  <span class="mono muted">19:02:30</span>
+                  <span><b class="mono" style="font-weight: 600">1,392</b> tx/s</span>
+                </div>
+              </div>
+              <div style="position: relative; height: 18px; margin-top: 8px">
+                <span class="xlab" style="left: 0%">18:50</span>
+                <span class="xlab" style="left: 33.33%">18:55</span>
+                <span class="xlab" style="left: 66.67%">19:00</span>
+                <span class="xlab" style="left: 100%">19:05</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="ph"><h2>Locks</h2><span class="badge b-warn">2 blocked</span><span class="poll">pg_locks · 2 s</span></div>
+            <div style="padding: 14px 16px; display: flex; flex-direction: column; gap: 10px">
+              <div style="padding: 10px 12px; border: 1px solid var(--warn-line); background: var(--warn-bg); border-radius: 8px; display: flex; flex-direction: column; gap: 4px">
+                <span style="display: flex; align-items: center; gap: 6px; font-size: 12px"><span class="muted">Blocker</span><b class="mono" style="font-weight: 600">48211</b><span class="muted">etl_writer</span></span>
+                <span style="font-size: 12px">idle in transaction · <b class="mono" style="font-weight: 600">4m 12s</b></span>
+                <span class="mono muted" style="font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">UPDATE accounts SET plan = 'pro' WHERE id = 881</span>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 8px; padding-left: 14px; border-left: 2px solid var(--border); margin-left: 12px">
+                <div style="display: flex; flex-direction: column; gap: 2px; font-size: 12px">
+                  <span><span class="muted">waits</span> <b class="mono" style="font-weight: 600">48230</b> <span class="muted">billing_api · 3m 58s</span></span>
+                  <span class="mono muted" style="font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">UPDATE accounts SET seats = seats + 1 WHERE id = 881</span>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 2px; font-size: 12px">
+                  <span><span class="muted">waits</span> <b class="mono" style="font-weight: 600">48244</b> <span class="muted">billing_api · 1m 05s</span></span>
+                  <span class="mono muted" style="font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">UPDATE accounts SET last_seen_at = now() WHERE id = 881</span>
+                </div>
+              </div>
+              <div style="display: flex; gap: 8px; margin-top: 4px">
+                <button class="btn btn-o btn-sm" type="button">Cancel 48211</button>
+                <button class="btn btn-o btn-sm" type="button" style="color: var(--destructive)">Terminate 48211</button>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <section class="card">
+          <div class="ph"><h2>Sessions</h2><span class="muted" style="font-size: 12px">37 backends · 6 shown</span><span class="poll">pg_stat_activity · 2 s</span></div>
+          <div style="overflow-x: auto; position: relative">
+            <table class="tbl">
+              <thead><tr><th class="r" style="text-align: right">pid</th><th>user</th><th>application</th><th>state</th><th>wait</th><th class="r" style="text-align: right">xact age</th><th style="width: 100%">query</th><th><span style="position: absolute; width: 1px; height: 1px; overflow: hidden">Actions</span></th></tr></thead>
+              <tbody>
+                <tr style="background: var(--warn-bg)"><td class="r">48211</td><td>etl_writer</td><td class="muted">airflow</td><td><span class="badge b-warn">idle in transaction</span></td><td class="mono muted">Client: ClientRead</td><td class="r">4m 12s</td><td class="mono" style="max-width: 1px; overflow: hidden; text-overflow: ellipsis">UPDATE accounts SET plan = 'pro' WHERE id = 881</td><td style="position: relative"><div style="display: flex; gap: 4px"><button class="btn btn-sm" type="button">Cancel</button><button class="btn btn-o btn-sm" type="button" style="color: var(--destructive); box-shadow: 0 0 0 2px var(--ring)">Terminate</button></div>
+                  <div role="alertdialog" aria-label="Terminate backend 48211" style="position: absolute; right: 12px; top: 40px; z-index: 3; width: 300px; padding: 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); box-shadow: 0 12px 32px rgba(0,0,0,.18); white-space: normal; display: flex; flex-direction: column; gap: 10px">
+                    <b style="font-weight: 600; font-size: 13px">Terminate backend 48211?</b>
+                    <span class="muted" style="font-size: 12px">pg_terminate_backend closes etl_writer's connection and rolls back its open transaction. Waiting queries 48230 and 48244 will proceed.</span>
+                    <div style="display: flex; justify-content: flex-end; gap: 8px"><button class="btn btn-o btn-sm" type="button">Keep it</button><button class="btn btn-d btn-sm" type="button">Terminate</button></div>
+                  </div>
+                </td></tr>
+                <tr><td class="r">48230</td><td>billing_api</td><td class="muted">node-pg</td><td><span class="badge"><span style="width: 6px; height: 6px; border-radius: 50%; background: #22c55e" aria-hidden="true"></span>active</span></td><td class="mono" style="color: var(--warn)">Lock: transactionid</td><td class="r">3m 58s</td><td class="mono" style="max-width: 1px; overflow: hidden; text-overflow: ellipsis">UPDATE accounts SET seats = seats + 1 WHERE id = 881</td><td><div style="display: flex; gap: 4px"><button class="btn btn-sm" type="button">Cancel</button><button class="btn btn-sm" type="button" style="color: var(--destructive)">Terminate</button></div></td></tr>
+                <tr><td class="r">48244</td><td>billing_api</td><td class="muted">node-pg</td><td><span class="badge"><span style="width: 6px; height: 6px; border-radius: 50%; background: #22c55e" aria-hidden="true"></span>active</span></td><td class="mono" style="color: var(--warn)">Lock: transactionid</td><td class="r">1m 05s</td><td class="mono" style="max-width: 1px; overflow: hidden; text-overflow: ellipsis">UPDATE accounts SET last_seen_at = now() WHERE id = 881</td><td><div style="display: flex; gap: 4px"><button class="btn btn-sm" type="button">Cancel</button><button class="btn btn-sm" type="button" style="color: var(--destructive)">Terminate</button></div></td></tr>
+                <tr><td class="r">47990</td><td>metabase</td><td class="muted">Metabase</td><td><span class="badge"><span style="width: 6px; height: 6px; border-radius: 50%; background: #22c55e" aria-hidden="true"></span>active</span></td><td class="mono muted">IO: DataFileRead</td><td class="r">12.8s</td><td class="mono" style="max-width: 1px; overflow: hidden; text-overflow: ellipsis">SELECT date_trunc('hour', ts), count(*) FROM page_views WHERE ts &gt;= now() - interval '7 days' GROUP BY 1</td><td><div style="display: flex; gap: 4px"><button class="btn btn-sm" type="button">Cancel</button><button class="btn btn-sm" type="button" style="color: var(--destructive)">Terminate</button></div></td></tr>
+                <tr><td class="r">48102</td><td>readonly</td><td class="muted">Kleos <span class="badge" style="height: 16px; padding: 0 5px; font-size: 10px">you</span></td><td><span class="badge"><span style="width: 6px; height: 6px; border-radius: 50%; background: #22c55e" aria-hidden="true"></span>active</span></td><td class="mono muted">—</td><td class="r">0.0s</td><td class="mono" style="max-width: 1px; overflow: hidden; text-overflow: ellipsis">SELECT pid, usename, application_name, state, wait_event_type … FROM pg_stat_activity</td><td></td></tr>
+                <tr><td class="r">47821</td><td>rollup_job</td><td class="muted">cron</td><td><span class="badge muted">idle</span></td><td class="mono muted">Client: ClientRead</td><td class="r muted">—</td><td class="mono muted" style="max-width: 1px; overflow: hidden; text-overflow: ellipsis">COMMIT</td><td><div style="display: flex; gap: 4px"><button class="btn btn-sm" type="button">Cancel</button><button class="btn btn-sm" type="button" style="color: var(--destructive)">Terminate</button></div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px">
+          <section class="card">
+            <div class="ph"><h2>Table health</h2><span class="poll">30 s</span></div>
+            <table class="tbl">
+              <thead><tr><th>table</th><th class="r" style="text-align: right">size</th><th>dead tuples</th><th class="r" style="text-align: right">vacuumed</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">page_views</td><td class="r">61.2 GB</td><td><span class="bar"><span style="width: 6%"></span></span> <span class="mono muted">2.1%</span></td><td class="r muted">14 min</td></tr>
+                <tr><td class="mono">events</td><td class="r">18.4 GB</td><td><span class="bar"><span style="width: 35%"></span></span> <span class="mono">11.8%</span></td><td class="r muted">3 d</td></tr>
+                <tr><td class="mono">accounts</td><td class="r">9.8 MB</td><td><span class="bar"><span style="width: 100%"></span></span> <span class="mono" style="color: var(--warn); display: inline-flex; align-items: center; gap: 3px"><svg class="i" viewBox="0 0 24 24" role="img" aria-label="Warning" style="width: 11px; height: 11px"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4M12 17h.01"></path></svg>34.0%</span></td><td class="r muted">6 d</td></tr>
+                <tr><td class="mono">sessions</td><td class="r">1.9 GB</td><td><span class="bar"><span style="width: 2%"></span></span> <span class="mono muted">0.6%</span></td><td class="r muted">2 h</td></tr>
+                <tr><td class="mono">daily_rollups</td><td class="r">412 MB</td><td><span class="bar"><span style="width: 0%"></span></span> <span class="mono muted">0.0%</span></td><td class="r muted">never</td></tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section class="card">
+            <div class="ph"><h2>Index usage</h2><span class="poll">30 s</span></div>
+            <table class="tbl">
+              <thead><tr><th>index</th><th class="r" style="text-align: right">scans</th><th class="r" style="text-align: right">size</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">page_views_ts_idx</td><td class="r">4.2M</td><td class="r">9.1 GB</td></tr>
+                <tr><td class="mono">sessions_pkey</td><td class="r">2.9M</td><td class="r">68 MB</td></tr>
+                <tr><td class="mono">events_account_id_idx</td><td class="r">812k</td><td class="r">2.3 GB</td></tr>
+                <tr><td class="mono">events_payload_gin</td><td class="r"><span class="badge b-warn" style="font-family: Geist, system-ui, sans-serif">0 · unused</span></td><td class="r">6.7 GB</td></tr>
+                <tr><td class="mono">accounts_email_key</td><td class="r">41k</td><td class="r">112 kB</td></tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section class="card">
+            <div class="ph"><h2>Slow queries</h2><span class="poll">pg_stat_statements · 30 s</span></div>
+            <table class="tbl" style="table-layout: fixed">
+              <thead><tr><th style="width: 50%">query</th><th class="r" style="text-align: right">calls</th><th class="r" style="text-align: right">mean</th><th class="r" style="text-align: right">total</th></tr></thead>
+              <tbody>
+                <tr><td class="mono" style="overflow: hidden; text-overflow: ellipsis">SELECT date_trunc($1, ts), count(*) FROM page_views …</td><td class="r">1,204</td><td class="r">2.84 s</td><td class="r"><b style="font-weight: 600">57.0 min</b></td></tr>
+                <tr><td class="mono" style="overflow: hidden; text-overflow: ellipsis">UPDATE accounts SET last_seen_at = now() WHERE id = $1</td><td class="r">412,880</td><td class="r">3.1 ms</td><td class="r">21.3 min</td></tr>
+                <tr><td class="mono" style="overflow: hidden; text-overflow: ellipsis">INSERT INTO events (account_id, kind, payload) VALUES …</td><td class="r">9.8M</td><td class="r">0.11 ms</td><td class="r">18.0 min</td></tr>
+              </tbody>
+            </table>
+            <p class="muted" style="margin: 0; padding: 10px 12px; font-size: 11px; border-top: 1px solid var(--border)">Ranked by total time since the last stats reset.</p>
+          </section>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1180}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { themeClass: (this.props.theme ?? 'light') === 'dark' ? 'dark' : '' };
+  }
+}
+</script>
+</body>
+</html>

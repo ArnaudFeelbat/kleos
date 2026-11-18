@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Kleos — Query editor</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.kl{--bg:#ffffff;--fg:#09090b;--card:#ffffff;--muted:#f4f4f5;--muted-fg:#5f5f67;--border:#e4e4e7;--input:#d4d4d8;--primary:#18181b;--primary-fg:#fafafa;--accent:#f4f4f5;--ring:#18181b;--sidebar:#fafafa;--chrome:#f4f4f5;--destructive:#dc2626;--err-bg:#fef2f2;--kw:#7c3aed;--str:#15803d;--numl:#c2410c;--fn:#1d4ed8;--stmt:#f8f8f9;font-family:Geist,system-ui,sans-serif;color:var(--fg);background:var(--bg);font-size:13px;line-height:1.45;-webkit-font-smoothing:antialiased}
+.kl.dark{--bg:#09090b;--fg:#fafafa;--card:#111113;--muted:#27272a;--muted-fg:#a1a1aa;--border:#27272a;--input:#3f3f46;--primary:#fafafa;--primary-fg:#18181b;--accent:#1f1f23;--ring:#d4d4d8;--sidebar:#0c0c0e;--chrome:#18181b;--destructive:#ef4444;--err-bg:#2a0b0b;--kw:#c4b5fd;--str:#86efac;--numl:#fdba74;--fn:#93c5fd;--stmt:#121215}
+.kl *{box-sizing:border-box}
+.mono{font-family:"Geist Mono",ui-monospace,monospace}
+.muted{color:var(--muted-fg)}
+.i{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 12px;border-radius:6px;font:500 13px/1 Geist,system-ui,sans-serif;border:1px solid transparent;cursor:pointer;white-space:nowrap;text-decoration:none;background:transparent;color:var(--fg)}
+.btn-p{background:var(--primary);color:var(--primary-fg)}
+.btn-o{background:var(--bg);border-color:var(--border);box-shadow:0 1px 2px rgba(0,0,0,.05)}
+.btn-sm{height:28px;padding:0 10px;font-size:12px}
+.btn-icon{width:32px;padding:0}
+.input{height:32px;width:100%;border:1px solid var(--input);border-radius:6px;background:var(--bg);color:var(--fg);padding:0 10px;font:400 13px Geist,system-ui,sans-serif}
+.badge{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;border-radius:9999px;font-size:11px;font-weight:500;border:1px solid var(--border);white-space:nowrap}
+.kbd{font:500 11px "Geist Mono",monospace;padding:1px 5px;border:1px solid var(--border);border-radius:4px;background:var(--muted);color:var(--muted-fg)}
+.tl{width:12px;height:12px;border-radius:50%;display:inline-block}
+.navi{display:flex;align-items:center;gap:8px;height:28px;padding:0 8px;border-radius:6px;color:var(--fg);text-decoration:none}
+.navi:hover{background:var(--accent);color:var(--fg)}
+.navi .n{margin-left:auto;color:var(--muted-fg);font:400 11px "Geist Mono",monospace}
+.sect{display:flex;justify-content:space-between;padding:10px 8px 4px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--muted-fg)}
+.tabs{display:inline-flex;gap:2px;padding:3px;background:var(--muted);border-radius:8px}
+.tab{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 12px;border-radius:6px;color:var(--muted-fg);font-weight:500;text-decoration:none}
+.tab:hover{color:var(--fg)}
+.tab-on{background:var(--bg);color:var(--fg);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.qtab{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 12px;border-right:1px solid var(--border);color:var(--muted-fg);text-decoration:none;font-size:12px}
+.qtab-on{background:var(--bg);color:var(--fg);font-weight:500;box-shadow:inset 0 -2px 0 var(--primary)}
+.ed{font:400 13px/22px "Geist Mono",monospace}
+.ln{display:flex}
+.ln .no{width:44px;flex:none;text-align:right;padding-right:14px;color:var(--muted-fg);user-select:none}
+.ln .tx{white-space:pre;flex:1}
+.kw{color:var(--kw);font-weight:500}.str{color:var(--str)}.numl{color:var(--numl)}.fn{color:var(--fn)}.cm{color:var(--muted-fg);font-style:italic}
+.grid{border-collapse:separate;border-spacing:0;font-size:12px}
+.grid th,.grid td{height:30px;padding:0 12px;border-bottom:1px solid var(--border);border-right:1px solid var(--border);white-space:nowrap;text-align:left}
+.grid th{background:var(--sidebar);font-weight:600;position:sticky;top:0;height:44px}
+.grid th small{display:block;font:400 10.5px "Geist Mono",monospace;color:var(--muted-fg)}
+.grid td.g{width:44px;text-align:right;color:var(--muted-fg);font:400 11px "Geist Mono",monospace;background:var(--sidebar)}
+.num{text-align:right!important;font-family:"Geist Mono",monospace}
+.hist{display:flex;flex-direction:column;gap:4px;padding:10px 12px;border-bottom:1px solid var(--border);text-decoration:none;color:var(--fg)}
+.hist:hover{background:var(--accent);color:var(--fg)}
+a{color:var(--fg)}a:hover{color:var(--muted-fg)}
+</style>
+</helmet>
+<div class="kl {{themeClass}}" style="width: 100%; min-height: 900px; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 10px; overflow: hidden">
+  <header style="height: 40px; flex: none; display: flex; align-items: center; gap: 12px; padding: 0 14px; background: var(--chrome); border-bottom: 1px solid var(--border)">
+    <div style="display: flex; gap: 8px" aria-hidden="true"><span class="tl" style="background: #ff5f57"></span><span class="tl" style="background: #febc2e"></span><span class="tl" style="background: #28c840"></span></div>
+    <div style="flex: 1; text-align: center; font-weight: 600">shop_dev <span class="muted" style="font-weight: 400">— kleos@localhost:5432</span></div>
+    <span class="badge mono">PG 16.4</span>
+  </header>
+
+  <div style="flex: 1; display: flex; flex-wrap: wrap; min-height: 0">
+    <aside style="flex: 1 1 248px; max-width: 100%; background: var(--sidebar); border-right: 1px solid var(--border); padding: 12px; display: flex; flex-direction: column; gap: 10px">
+      <button class="btn btn-o" type="button" style="justify-content: space-between; width: 100%" aria-haspopup="listbox" aria-label="Schema: public"><span style="display: flex; align-items: center; gap: 8px"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5v14a9 3 0 0 0 18 0V5"></path><path d="M3 12a9 3 0 0 0 18 0"></path></svg>public</span><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 15 5 5 5-5M7 9l5-5 5 5"></path></svg></button>
+      <div style="position: relative">
+        <svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="position: absolute; left: 10px; top: 8px"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
+        <input class="input" aria-label="Filter tables" placeholder="Filter" style="padding-left: 32px">
+      </div>
+      <nav aria-label="Schema objects" style="display: flex; flex-direction: column; gap: 1px">
+        <div class="sect"><span>Tables</span><span>6</span></div>
+        <a class="navi" href="Data.dc.html"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M3 15h18M9 3v18"></path></svg>categories<span class="n">48</span></a>
+        <a class="navi" href="Data.dc.html"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M3 15h18M9 3v18"></path></svg>customers<span class="n">12.4k</span></a>
+        <a class="navi" href="Data.dc.html"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M3 15h18M9 3v18"></path></svg>order_items<span class="n">3.9M</span></a>
+        <a class="navi" href="Data.dc.html"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M3 15h18M9 3v18"></path></svg>orders<span class="n">1.2M</span></a>
+        <a class="navi" href="Data.dc.html"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M3 15h18M9 3v18"></path></svg>payments<span class="n">1.1M</span></a>
+        <a class="navi" href="Data.dc.html"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M3 15h18M9 3v18"></path></svg>products<span class="n">2,184</span></a>
+        <div class="sect"><span>Views</span><span>2</span></div>
+        <a class="navi" href="Data.dc.html"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>active_customers</a>
+        <a class="navi" href="Data.dc.html"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>order_totals</a>
+      </nav>
+      <div style="margin-top: auto; display: flex; align-items: center; gap: 8px; padding: 8px; border-top: 1px solid var(--border); font-size: 12px">
+        <span style="width: 8px; height: 8px; border-radius: 50%; background: #22c55e" aria-hidden="true"></span>
+        <span>Connected</span>
+        <span class="muted">· 4 pooled + 2 query</span>
+      </div>
+    </aside>
+
+    <main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column">
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--border)">
+        <nav class="tabs" aria-label="Workspace">
+          <a class="tab" href="Schema.dc.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><rect x="16" y="16" width="6" height="6" rx="1"></rect><rect x="2" y="16" width="6" height="6" rx="1"></rect><rect x="9" y="2" width="6" height="6" rx="1"></rect><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3M12 12V8"></path></svg>Schema</a>
+          <a class="tab" href="Data.dc.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M3 15h18M9 3v18"></path></svg>Data</a>
+          <a class="tab tab-on" href="Query.dc.html" aria-current="page"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><path d="m16 18 6-6-6-6M8 6l-6 6 6 6"></path></svg>Query</a>
+          <a class="tab" href="Monitor.dc.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>Monitor</a>
+        </nav>
+        <span style="flex: 1"></span>
+        <span class="muted" style="font-size: 12px; display: inline-flex; gap: 6px; align-items: center"><span style="width: 6px; height: 6px; border-radius: 50%; background: var(--muted-fg)" aria-hidden="true"></span>Own session · no open transaction</span>
+      </div>
+
+      <div style="flex: 1; display: flex; flex-wrap: wrap; min-height: 0">
+        <div style="flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column">
+          <div style="display: flex; align-items: stretch; background: var(--sidebar); border-bottom: 1px solid var(--border)">
+            <a class="qtab qtab-on" href="Query.dc.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 13px; height: 13px"><path d="m16 18 6-6-6-6M8 6l-6 6 6 6"></path></svg>Query 1<span style="width: 6px; height: 6px; border-radius: 50%; background: var(--fg)" role="img" aria-label="Unsaved"></span></a>
+            <a class="qtab" href="Chart.dc.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 13px; height: 13px"><path d="M3 3v18h18"></path><path d="m19 9-5 5-4-4-3 3"></path></svg>revenue by channel</a>
+            <button class="btn btn-icon" type="button" aria-label="New query tab" style="height: 36px; border-radius: 0"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><path d="M5 12h14M12 5v14"></path></svg></button>
+          </div>
+
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border)">
+            <button class="btn btn-p" type="button"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px; fill: currentColor"><polygon points="6 3 20 12 6 21 6 3"></polygon></svg>Run<span class="kbd" style="background: transparent; border-color: rgba(127,127,127,.4); color: inherit">⌘↵</span></button>
+            <button class="btn btn-o" type="button" disabled style="opacity: .5"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><rect x="5" y="5" width="14" height="14" rx="2"></rect></svg>Cancel</button>
+            <a class="btn btn-o" href="Explain.dc.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><path d="M3 5h12M7 12h12M11 19h10"></path></svg>Explain</a>
+            <span style="flex: 1"></span>
+            <button class="btn btn-o" type="button"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><path d="M17 21v-8H7v8M7 3v5h8"></path></svg>Save…</button>
+          </div>
+
+          <div class="ed" role="textbox" aria-multiline="true" aria-label="SQL editor" style="position: relative; padding: 10px 0; background: var(--bg); border-bottom: 1px solid var(--border); min-height: 320px">
+            <div style="background: var(--stmt); box-shadow: inset 2px 0 0 var(--muted-fg)">
+              <div class="ln"><span class="no">1</span><span class="tx cm">-- Revenue per day, last 30 days</span></div>
+              <div class="ln"><span class="no">2</span><span class="tx"><span class="kw">select</span> <span class="fn">date_trunc</span>(<span class="str">'day'</span>, o.placed_at)::<span class="kw">date</span> <span class="kw">as</span> day,</span></div>
+              <div class="ln"><span class="no">3</span><span class="tx">       <span class="fn">count</span>(*)                <span class="kw">as</span> orders,</span></div>
+              <div class="ln"><span class="no">4</span><span class="tx">       <span class="fn">sum</span>(o.total)            <span class="kw">as</span> revenue,</span></div>
+              <div class="ln"><span class="no">5</span><span class="tx">       <span class="fn">round</span>(<span class="fn">avg</span>(o.total), <span class="numl">2</span>)  <span class="kw">as</span> avg_basket</span></div>
+              <div class="ln"><span class="no">6</span><span class="tx"><span class="kw">from</span> orders o</span></div>
+              <div class="ln"><span class="no">7</span><span class="tx"><span class="kw">where</span> o.placed_at &gt;= <span class="fn">now</span>() - <span class="kw">interval</span> <span class="str">'30 days'</span></span></div>
+              <div class="ln"><span class="no">8</span><span class="tx">  <span class="kw">and</span> o.status &lt;&gt; <span class="str">'cancelled'</span></span></div>
+              <div class="ln"><span class="no">9</span><span class="tx"><span class="kw">group by</span> <span class="numl">1</span></span></div>
+              <div class="ln"><span class="no">10</span><span class="tx"><span class="kw">order by</span> <span class="numl">1</span> <span class="kw">desc</span>;</span></div>
+            </div>
+            <div class="ln"><span class="no">11</span><span class="tx"> </span></div>
+            <div class="ln"><span class="no">12</span><span class="tx"><span class="kw">select</span> * <span class="kw">from</span> pay<span style="display: inline-block; width: 2px; height: 16px; background: var(--fg); vertical-align: -3px" aria-hidden="true"></span></span></div>
+
+            <div role="listbox" aria-label="Completions" style="position: absolute; left: 194px; top: 274px; width: 300px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.14); padding: 4px; font-family: Geist, system-ui, sans-serif; font-size: 12px; line-height: 1.3; z-index: 3">
+              <div role="option" aria-selected="true" style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 5px; background: var(--muted)"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 13px; height: 13px"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M3 15h18M9 3v18"></path></svg><span class="mono"><b style="font-weight: 600">pay</b>ments</span><span class="muted" style="margin-left: auto">table · 1.1M rows</span></div>
+              <div role="option" aria-selected="false" style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 5px"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="width: 13px; height: 13px"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"></path></svg><span class="mono"><b style="font-weight: 600">pay</b>ment_method</span><span class="muted" style="margin-left: auto">enum</span></div>
+              <div role="option" aria-selected="false" style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 5px"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="width: 13px; height: 13px"><path d="M4 7h16M4 12h10M4 17h7"></path></svg><span class="mono"><b style="font-weight: 600">pay</b>ments.paid_at</span><span class="muted" style="margin-left: auto">timestamptz</span></div>
+              <div style="display: flex; gap: 10px; padding: 6px 8px 4px; border-top: 1px solid var(--border); margin-top: 4px" class="muted"><span><span class="kbd">↵</span> insert</span><span><span class="kbd">↑↓</span> move</span><span><span class="kbd">esc</span> close</span></div>
+            </div>
+          </div>
+
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 8px 12px; border-bottom: 1px solid var(--border)">
+            <nav class="tabs" aria-label="Result view" style="padding: 2px">
+              <a class="tab tab-on" href="Query.dc.html" aria-current="page" style="height: 26px; font-size: 12px"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 13px; height: 13px"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M3 15h18M9 3v18"></path></svg>Results</a>
+              <a class="tab" href="Chart.dc.html" style="height: 26px; font-size: 12px"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 13px; height: 13px"><path d="M3 3v18h18"></path><path d="m19 9-5 5-4-4-3 3"></path></svg>Chart</a>
+              <a class="tab" href="Explain.dc.html" style="height: 26px; font-size: 12px"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 13px; height: 13px"><path d="M3 5h12M7 12h12M11 19h10"></path></svg>Explain</a>
+            </nav>
+            <span style="display: inline-flex; gap: 6px; align-items: center; font-size: 12px"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px; color: #16a34a"><path d="M20 6 9 17l-5-5"></path></svg><b style="font-weight: 600">30 rows</b><span class="muted">· 212 ms · statement on lines 1–10</span></span>
+            <span style="flex: 1"></span>
+            <button class="btn btn-sm" type="button"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><rect x="8" y="8" width="14" height="14" rx="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>Copy as CSV</button>
+          </div>
+
+          <div style="flex: 1; overflow: auto; min-height: 0" role="region" aria-label="Query results">
+            <table class="grid" style="min-width: 100%">
+              <thead><tr><th style="width: 44px"></th><th>day<small>date</small></th><th class="num">orders<small>int8</small></th><th class="num">revenue<small>numeric</small></th><th class="num" style="width: 100%">avg_basket<small>numeric</small></th></tr></thead>
+              <tbody>
+                <tr><td class="g">1</td><td class="mono">2026-11-17</td><td class="num">368</td><td class="num">43633.00</td><td class="num">118.57</td></tr>
+                <tr><td class="g">2</td><td class="mono">2026-11-16</td><td class="num">341</td><td class="num">41208.40</td><td class="num">120.85</td></tr>
+                <tr><td class="g">3</td><td class="mono">2026-11-15</td><td class="num">352</td><td class="num">42950.10</td><td class="num">122.02</td></tr>
+                <tr><td class="g">4</td><td class="mono">2026-11-14</td><td class="num">371</td><td class="num">45811.75</td><td class="num">123.48</td></tr>
+                <tr><td class="g">5</td><td class="mono">2026-11-13</td><td class="num">402</td><td class="num">49327.60</td><td class="num">122.71</td></tr>
+                <tr><td class="g">6</td><td class="mono">2026-11-12</td><td class="num">389</td><td class="num">47104.20</td><td class="num">121.09</td></tr>
+                <tr><td class="g">7</td><td class="mono">2026-11-11</td><td class="num">356</td><td class="num">43018.90</td><td class="num">120.84</td></tr>
+                <tr><td class="g">8</td><td class="mono">2026-11-10</td><td class="num">330</td><td class="num">39012.35</td><td class="num">118.22</td></tr>
+                <tr><td class="g">9</td><td class="mono">2026-11-09</td><td class="num">318</td><td class="num">37440.00</td><td class="num">117.74</td></tr>
+                <tr><td class="g">10</td><td class="mono">2026-11-08</td><td class="num">327</td><td class="num">38901.65</td><td class="num">118.97</td></tr>
+                <tr><td class="g">11</td><td class="mono">2026-11-07</td><td class="num">360</td><td class="num">43987.30</td><td class="num">122.19</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <aside aria-label="History and saved queries" style="flex: 1 1 280px; max-width: 100%; border-left: 1px solid var(--border); display: flex; flex-direction: column; background: var(--bg)">
+          <div style="padding: 10px 12px; border-bottom: 1px solid var(--border)">
+            <nav class="tabs" aria-label="History or saved" style="display: flex"><a class="tab tab-on" href="Query.dc.html" style="flex: 1; justify-content: center">History</a><a class="tab" href="Query.dc.html" style="flex: 1; justify-content: center">Saved <span class="muted mono" style="font-size: 11px">3</span></a></nav>
+          </div>
+          <a class="hist" href="Query.dc.html">
+            <span style="display: flex; gap: 6px; align-items: center; font-size: 11px" class="muted"><span class="mono">18:51</span>·<span>212 ms</span>·<span>30 rows</span></span>
+            <span class="mono" style="font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">select date_trunc('day', o.placed_at)::date…</span>
+          </a>
+          <a class="hist" href="Explain.dc.html">
+            <span style="display: flex; gap: 6px; align-items: center; font-size: 11px" class="muted"><span class="mono">18:47</span>·<span>Explain</span>·<span>214 ms</span></span>
+            <span class="mono" style="font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">select date_trunc('day', p.paid_at)::date, p…</span>
+          </a>
+          <a class="hist" href="Query.dc.html">
+            <span style="display: flex; gap: 6px; align-items: center; font-size: 11px"><span class="mono muted">18:40</span><span class="badge" style="height: 18px; color: var(--destructive); border-color: currentColor">42703</span><span class="muted">column does not exist</span></span>
+            <span class="mono" style="font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">select o.stauts, count(*) from orders o…</span>
+          </a>
+          <a class="hist" href="Query.dc.html">
+            <span style="display: flex; gap: 6px; align-items: center; font-size: 11px" class="muted"><span class="mono">18:22</span>·<span>4 ms</span>·<span>1 row</span></span>
+            <span class="mono" style="font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">select count(*) from payments where paid_at is null</span>
+          </a>
+          <a class="hist" href="Query.dc.html">
+            <span style="display: flex; gap: 6px; align-items: center; font-size: 11px" class="muted"><span class="mono">17:58</span>·<span>cancelled after 12.4 s</span></span>
+            <span class="mono" style="font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">select pg_sleep(60)</span>
+          </a>
+          <a class="hist" href="Chart.dc.html">
+            <span style="display: flex; gap: 6px; align-items: center; font-size: 11px" class="muted"><span class="mono">17:31</span>·<span>188 ms</span>·<span>30 rows</span><svg class="i" viewBox="0 0 24 24" role="img" aria-label="Has chart" style="width: 12px; height: 12px"><path d="M3 3v18h18"></path><path d="m19 9-5 5-4-4-3 3"></path></svg></span>
+            <span class="mono" style="font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">select date_trunc('day', placed_at)::date, sum(total) filter…</span>
+          </a>
+          <p class="muted" style="margin: auto 0 0; padding: 10px 12px; font-size: 11px; border-top: 1px solid var(--border)">Keeps the latest 1,000 runs for shop_dev.</p>
+        </aside>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { themeClass: (this.props.theme ?? 'light') === 'dark' ? 'dark' : '' };
+  }
+}
+</script>
+</body>
+</html>

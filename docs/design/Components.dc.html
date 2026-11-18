@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Kleos — UI kit</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.kl{--bg:#ffffff;--fg:#09090b;--card:#ffffff;--muted:#f4f4f5;--muted-fg:#5f5f67;--border:#e4e4e7;--input:#d4d4d8;--primary:#18181b;--primary-fg:#fafafa;--accent:#f4f4f5;--ring:#18181b;--sidebar:#fafafa;--destructive:#dc2626;--destructive-fg:#ffffff;--ok:#15803d;--ok-bg:#f0fdf4;--ok-line:#bbf7d0;--warn:#b45309;--warn-bg:#fffbeb;--warn-line:#fde68a;--err-bg:#fef2f2;--err-line:#fecaca;--upd:#fef3c7;--upd-fg:#854d0e;--upd-line:#d97706;--ins:#dcfce7;--ins-fg:#166534;--del:#fee2e2;--del-fg:#991b1b;--c1:#2a78d6;--c2:#eb6834;--c3:#1baf7a;--kw:#7c3aed;--str:#15803d;--numl:#c2410c;font-family:Geist,system-ui,sans-serif;color:var(--fg);background:var(--bg);font-size:13px;line-height:1.45;-webkit-font-smoothing:antialiased}
+.kl.dark{--bg:#09090b;--fg:#fafafa;--card:#111113;--muted:#27272a;--muted-fg:#a1a1aa;--border:#27272a;--input:#3f3f46;--primary:#fafafa;--primary-fg:#18181b;--accent:#1f1f23;--ring:#d4d4d8;--sidebar:#0c0c0e;--destructive:#ef4444;--destructive-fg:#fafafa;--ok:#4ade80;--ok-bg:#052e16;--ok-line:#14532d;--warn:#fbbf24;--warn-bg:#2a1a04;--warn-line:#713f12;--err-bg:#2a0b0b;--err-line:#7f1d1d;--upd:#3a2a05;--upd-fg:#fcd34d;--upd-line:#f59e0b;--ins:#06301a;--ins-fg:#86efac;--del:#3b0d0d;--del-fg:#fca5a5;--c1:#3987e5;--c2:#d95926;--c3:#199e70;--kw:#c4b5fd;--str:#86efac;--numl:#fdba74}
+.kl *{box-sizing:border-box}
+.mono{font-family:"Geist Mono",ui-monospace,monospace}
+.muted{color:var(--muted-fg)}
+.i{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 12px;border-radius:6px;font:500 13px/1 Geist,system-ui,sans-serif;border:1px solid transparent;cursor:pointer;white-space:nowrap;text-decoration:none;background:transparent;color:var(--fg)}
+.btn-p{background:var(--primary);color:var(--primary-fg)}
+.btn-o{background:var(--bg);border-color:var(--border);box-shadow:0 1px 2px rgba(0,0,0,.05)}
+.btn-s{background:var(--muted)}
+.btn-d{background:var(--destructive);color:var(--destructive-fg)}
+.btn-sm{height:28px;padding:0 10px;font-size:12px}
+.btn-icon{width:32px;padding:0}
+.input{height:32px;width:100%;border:1px solid var(--input);border-radius:6px;background:var(--bg);color:var(--fg);padding:0 10px;font:400 13px Geist,system-ui,sans-serif}
+.label{font-weight:500;font-size:12px}
+.badge{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;border-radius:9999px;font-size:11px;font-weight:500;border:1px solid var(--border);white-space:nowrap}
+.kbd{font:500 11px "Geist Mono",monospace;padding:1px 5px;border:1px solid var(--border);border-radius:4px;background:var(--muted);color:var(--muted-fg)}
+.tabs{display:inline-flex;gap:2px;padding:3px;background:var(--muted);border-radius:8px}
+.tab{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 12px;border-radius:6px;color:var(--muted-fg);font-weight:500;text-decoration:none}
+.tab-on{background:var(--bg);color:var(--fg);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.card h2{margin:0;font-size:15px;font-weight:600}
+.sw{display:flex;flex-direction:column;gap:6px;font-size:12px}
+.sw span.c{height:44px;border-radius:8px;border:1px solid var(--border)}
+.tt{width:100%;border-collapse:separate;border-spacing:0;font-size:12px}
+.tt th{height:32px;padding:0 10px;text-align:left;font-weight:500;color:var(--muted-fg);border-bottom:1px solid var(--border)}
+.tt td{height:40px;padding:0 10px;border-bottom:1px solid var(--border);white-space:nowrap}
+.null{color:var(--muted-fg);font:italic 500 11px "Geist Mono",monospace;letter-spacing:.02em}
+.code{font:400 12px/1.7 "Geist Mono",monospace}
+.kw{color:var(--kw);font-weight:500}.str{color:var(--str)}.numl{color:var(--numl)}
+.squig{text-decoration:underline wavy var(--destructive);text-underline-offset:3px;text-decoration-thickness:1.5px}
+.alert{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:8px;border:1px solid var(--border)}
+a{color:var(--fg)}a:hover{color:var(--muted-fg)}
+</style>
+</helmet>
+<div class="kl {{themeClass}}" style="width: 100%; min-height: 1500px; padding: 40px 32px; background: var(--sidebar)">
+  <div style="max-width: 1376px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px">
+    <div style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px">
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <h1 style="margin: 0; font-size: 28px; font-weight: 600; letter-spacing: -0.02em">Kleos UI kit</h1>
+        <p class="muted" style="margin: 0">shadcn/ui on Tailwind · zinc base · Geist and Geist Mono · radius 0.5rem · every screen reads these tokens, light and dark.</p>
+      </div>
+      <span style="flex: 1"></span>
+      <span class="badge mono">components.json · style new-york · baseColor zinc</span>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px">
+      <section class="card">
+        <h2>Color tokens</h2>
+        <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px">
+          <div class="sw"><span class="c" style="background: var(--bg)"></span><b style="font-weight: 500">background</b></div>
+          <div class="sw"><span class="c" style="background: var(--fg)"></span><b style="font-weight: 500">foreground</b></div>
+          <div class="sw"><span class="c" style="background: var(--card)"></span><b style="font-weight: 500">card</b></div>
+          <div class="sw"><span class="c" style="background: var(--muted)"></span><b style="font-weight: 500">muted</b></div>
+          <div class="sw"><span class="c" style="background: var(--muted-fg)"></span><b style="font-weight: 500">muted-fg</b></div>
+          <div class="sw"><span class="c" style="background: var(--border)"></span><b style="font-weight: 500">border</b></div>
+          <div class="sw"><span class="c" style="background: var(--input)"></span><b style="font-weight: 500">input</b></div>
+          <div class="sw"><span class="c" style="background: var(--primary)"></span><b style="font-weight: 500">primary</b></div>
+          <div class="sw"><span class="c" style="background: var(--sidebar)"></span><b style="font-weight: 500">sidebar</b></div>
+          <div class="sw"><span class="c" style="background: var(--ring)"></span><b style="font-weight: 500">ring</b></div>
+          <div class="sw"><span class="c" style="background: var(--destructive)"></span><b style="font-weight: 500">destructive</b></div>
+          <div class="sw"><span class="c" style="background: var(--warn)"></span><b style="font-weight: 500">warning</b></div>
+        </div>
+        <p class="muted" style="margin: 0; font-size: 12px">muted-foreground is darkened from zinc-500 to <span class="mono">#5f5f67</span> so 11–12 px labels pass 4.5:1 on <span class="mono">muted</span> too.</p>
+      </section>
+
+      <section class="card">
+        <h2>Type</h2>
+        <div style="display: flex; flex-direction: column; gap: 10px">
+          <div style="display: flex; align-items: baseline; gap: 16px"><span class="mono muted" style="width: 96px; font-size: 11px">title · 20/600</span><span style="font-size: 20px; font-weight: 600; letter-spacing: -0.01em">shop_dev</span></div>
+          <div style="display: flex; align-items: baseline; gap: 16px"><span class="mono muted" style="width: 96px; font-size: 11px">section · 15/600</span><span style="font-size: 15px; font-weight: 600">Pending changes</span></div>
+          <div style="display: flex; align-items: baseline; gap: 16px"><span class="mono muted" style="width: 96px; font-size: 11px">body · 13/400</span><span>Applied in one transaction.</span></div>
+          <div style="display: flex; align-items: baseline; gap: 16px"><span class="mono muted" style="width: 96px; font-size: 11px">label · 12/500</span><span class="label">SSL mode</span></div>
+          <div style="display: flex; align-items: baseline; gap: 16px"><span class="mono muted" style="width: 96px; font-size: 11px">data · mono 12</span><span class="mono" style="font-size: 12px">2026-11-17 18:42:13+04 · 1194.00</span></div>
+          <div style="display: flex; align-items: baseline; gap: 16px"><span class="mono muted" style="width: 96px; font-size: 11px">code · mono 13</span><span class="mono"><span class="kw">select</span> * <span class="kw">from</span> orders;</span></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Controls</h2>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center">
+          <button class="btn btn-p" type="button">Connect</button>
+          <button class="btn btn-s" type="button">Secondary</button>
+          <button class="btn btn-o" type="button">Test connection</button>
+          <button class="btn" type="button">Ghost</button>
+          <button class="btn btn-d" type="button">Terminate</button>
+          <button class="btn btn-o btn-sm" type="button">Small</button>
+          <button class="btn btn-o btn-icon" type="button" aria-label="Refresh"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path><path d="M8 16H3v5"></path></svg></button>
+          <button class="btn btn-o" type="button" disabled style="opacity: .5">Disabled</button>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px">
+          <div style="display: flex; flex-direction: column; gap: 6px"><label class="label" for="k-host">Host</label><input class="input mono" id="k-host" value="localhost"></div>
+          <div style="display: flex; flex-direction: column; gap: 6px"><label class="label" for="k-port">Port</label><input class="input mono" id="k-port" value="54x2" aria-invalid="true" aria-describedby="k-port-err" style="border-color: var(--destructive); box-shadow: 0 0 0 3px color-mix(in srgb, var(--destructive) 20%, transparent)"><span id="k-port-err" style="font-size: 12px; color: var(--destructive)">Port must be a number.</span></div>
+          <div style="display: flex; flex-direction: column; gap: 6px"><label class="label" for="k-ssl">SSL mode</label><button class="btn btn-o" id="k-ssl" type="button" aria-haspopup="listbox" style="justify-content: space-between; font-weight: 400"><span class="mono">verify-full</span><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button></div>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 18px; align-items: center">
+          <label style="display: flex; align-items: center; gap: 8px"><input type="checkbox" checked style="width: 15px; height: 15px; margin: 0; accent-color: var(--primary)">Save password</label>
+          <span style="display: flex; align-items: center; gap: 8px"><button type="button" role="switch" aria-checked="true" aria-label="Read-only on" style="width: 36px; height: 20px; border-radius: 9999px; border: 0; background: var(--primary); padding: 2px; display: flex; justify-content: flex-end; cursor: pointer"><span style="width: 16px; height: 16px; border-radius: 50%; background: var(--primary-fg)"></span></button>Read-only</span>
+          <span style="display: flex; align-items: center; gap: 8px"><button type="button" role="switch" aria-checked="false" aria-label="Read-only off" style="width: 36px; height: 20px; border-radius: 9999px; border: 0; background: var(--input); padding: 2px; display: flex; cursor: pointer"><span style="width: 16px; height: 16px; border-radius: 50%; background: var(--bg)"></span></button>Off</span>
+          <nav class="tabs" aria-label="Tabs example"><a class="tab tab-on" href="Components.dc.html">Results</a><a class="tab" href="Components.dc.html">Chart</a><a class="tab" href="Components.dc.html">Explain</a></nav>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center">
+          <span class="badge" style="background: var(--primary); color: var(--primary-fg); border-color: transparent">Default</span>
+          <span class="badge" style="background: var(--muted); border-color: transparent">Secondary</span>
+          <span class="badge">Outline</span>
+          <span class="badge" style="color: var(--warn); background: var(--warn-bg); border-color: var(--warn-line)"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 10px; height: 10px"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4M12 17h.01"></path></svg>idle in transaction</span>
+          <span class="badge"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 10px; height: 10px"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>Read-only</span>
+          <span><span class="kbd">⌘</span> <span class="kbd">↵</span></span>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Staged edits</h2>
+        <p class="muted" style="margin: 0; font-size: 12px">Nothing is sent until Commit. Each state has an icon in the row gutter, so it never relies on color alone.</p>
+        <table class="tt" style="border: 1px solid var(--border); border-radius: 8px; overflow: hidden">
+          <tbody>
+            <tr><td style="width: 72px" class="mono muted">3</td><td class="mono">100510</td><td>shipped</td><td class="mono" style="text-align: right; background: var(--upd); color: var(--upd-fg); box-shadow: inset 3px 0 0 var(--upd-line)">1194.00</td><td class="muted">changed cell · was <span class="mono">1249.00</span></td></tr>
+            <tr style="background: var(--ins); color: var(--ins-fg)"><td class="mono"><span style="display: inline-flex; gap: 4px; align-items: center"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 11px; height: 11px"><path d="M5 12h14M12 5v14"></path></svg>new</span></td><td class="mono">DEFAULT</td><td>pending</td><td class="mono" style="text-align: right">42.00</td><td>new row</td></tr>
+            <tr style="background: var(--del); color: var(--del-fg)"><td class="mono"><span style="display: inline-flex; gap: 4px; align-items: center"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 11px; height: 11px"><path d="M5 12h14"></path></svg>8</span></td><td class="mono" style="text-decoration: line-through">100505</td><td style="text-decoration: line-through">paid</td><td class="mono" style="text-align: right; text-decoration: line-through">59.00</td><td>deleted row</td></tr>
+          </tbody>
+        </table>
+        <div class="alert" role="alert" style="background: var(--err-bg); border-color: var(--err-line)">
+          <svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--destructive); margin-top: 1px"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4M12 16h.01"></path></svg>
+          <div style="display: flex; flex-direction: column; gap: 2px">
+            <b style="font-weight: 600">Commit failed — nothing was saved</b>
+            <span style="font-size: 12px">Row <span class="mono">100510</span> · <span class="mono">total</span>: <span class="mono">22003</span> numeric field overflow. The whole batch was rolled back; your 4 edits are still staged.</span>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <section class="card">
+      <h2>Postgres values — shown and edited</h2>
+      <div style="overflow-x: auto">
+        <table class="tt">
+          <thead><tr><th>Type</th><th>Shown as</th><th>Edited as</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">int2 · int4 · int8</td><td class="mono" style="text-align: right; width: 260px">9007199254740993</td><td><input class="input mono" aria-label="int8 editor" value="9007199254740993" style="height: 28px; width: 220px; text-align: right"></td><td class="muted">Sent as text, so bigint never rounds.</td></tr>
+            <tr><td class="mono">numeric · float</td><td class="mono" style="text-align: right">1194.00</td><td><input class="input mono" aria-label="numeric editor" value="1194.00" style="height: 28px; width: 220px; text-align: right"></td><td class="muted">Exact digits from the server.</td></tr>
+            <tr><td class="mono">text · varchar</td><td style="max-width: 260px; overflow: hidden; text-overflow: ellipsis">Leave at reception, ring twice — the…</td><td><textarea class="input" aria-label="text editor" style="height: 36px; width: 220px; padding: 6px 10px; resize: none; font-size: 12px">Leave at reception, ring twice</textarea></td><td class="muted">First line; full value in the side panel.</td></tr>
+            <tr><td class="mono">bool</td><td><input type="checkbox" checked aria-label="true" style="margin: 0; accent-color: var(--primary)"></td><td><span style="display: inline-flex; gap: 4px" role="radiogroup" aria-label="bool editor"><button class="btn btn-o btn-sm" type="button" role="radio" aria-checked="true" style="box-shadow: 0 0 0 2px var(--ring)">true</button><button class="btn btn-o btn-sm" type="button" role="radio" aria-checked="false">false</button><button class="btn btn-o btn-sm" type="button" role="radio" aria-checked="false"><span class="null">NULL</span></button></span></td><td class="muted">Third state for null.</td></tr>
+            <tr><td class="mono">date</td><td class="mono">2026-11-17</td><td><input class="input mono" aria-label="date editor" value="2026-11-17" style="height: 28px; width: 220px"></td><td class="muted">YYYY-MM-DD, checked on blur.</td></tr>
+            <tr><td class="mono">timestamptz</td><td class="mono">2026-11-17 18:42:13+04</td><td><input class="input mono" aria-label="timestamptz editor" value="2026-11-17 18:42:13+04" style="height: 28px; width: 220px"></td><td class="muted">Local time with offset; UTC on hover. Offset required.</td></tr>
+            <tr><td class="mono">json · jsonb</td><td class="mono" style="max-width: 260px; overflow: hidden; text-overflow: ellipsis">{"channel": "web", "coupon": "AUT…</td><td><span class="badge mono">Opens JSON editor ↗</span></td><td class="muted">Formatted tree in the side panel; validated.</td></tr>
+            <tr><td class="mono">arrays</td><td class="mono">{gift,eco,bundle}</td><td><input class="input mono" aria-label="array editor" value="{gift,eco,bundle}" style="height: 28px; width: 220px"></td><td class="muted">Postgres array literal.</td></tr>
+            <tr><td class="mono">uuid</td><td class="mono">3f1c2a9e-8b7d-4c11-9e2f-0a6b5d4c3e21</td><td><input class="input mono" aria-label="uuid editor" value="3f1c2a9e-8b7d-4c11-…" style="height: 28px; width: 220px"></td><td class="muted">Full, monospace.</td></tr>
+            <tr><td class="mono">enum</td><td>shipped</td><td><button class="btn btn-o btn-sm" type="button" aria-haspopup="listbox" style="width: 220px; justify-content: space-between; font-weight: 400">shipped<svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="width: 13px; height: 13px"><path d="m6 9 6 6 6-6"></path></svg></button></td><td class="muted">Dropdown of the enum's values.</td></tr>
+            <tr><td class="mono">bytea</td><td class="mono">2.4 kB · 89 50 4e 47 0d 0a…</td><td class="muted"><span style="display: inline-flex; gap: 6px; align-items: center"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 13px; height: 13px"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>Read-only in v1</span></td><td class="muted">Size and first bytes as hex.</td></tr>
+            <tr><td class="mono">NULL vs ''</td><td><span class="null">NULL</span> <span class="muted" style="margin: 0 8px">vs</span> <span class="mono" style="padding: 1px 4px; border: 1px dashed var(--input); border-radius: 4px; font-size: 11px">&#160;</span></td><td><span style="display: inline-flex; gap: 4px"><button class="btn btn-o btn-sm" type="button">Set null</button><button class="btn btn-o btn-sm" type="button">Set default</button></span></td><td class="muted">Empty string is a blank cell; null is a dim NULL.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px">
+      <section class="card">
+        <h2>Errors and empty states</h2>
+        <div class="alert" role="alert" style="background: var(--err-bg); border-color: var(--err-line)">
+          <svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--destructive); margin-top: 1px"><circle cx="12" cy="12" r="10"></circle><path d="m15 9-6 6M9 9l6 6"></path></svg>
+          <div style="display: flex; flex-direction: column; gap: 2px"><b style="font-weight: 600">Connection failed</b><span class="mono" style="font-size: 12px">FATAL 28P01: password authentication failed for user "kleos"</span></div>
+        </div>
+        <div class="alert" role="alert">
+          <svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="margin-top: 1px"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+          <div style="display: flex; flex-direction: column; gap: 2px"><b style="font-weight: 600">This connection is read-only</b><span class="mono" style="font-size: 12px">ERROR 25006: cannot execute UPDATE in a read-only transaction</span></div>
+        </div>
+        <div class="alert" style="flex-direction: column; gap: 8px; background: var(--muted); border-color: transparent">
+          <div style="display: flex; gap: 10px; align-items: flex-start"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="margin-top: 1px"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4M12 8h.01"></path></svg><div style="display: flex; flex-direction: column; gap: 2px"><b style="font-weight: 600">Slow queries need pg_stat_statements</b><span style="font-size: 12px" class="muted">The extension is not installed in this database. Run this as a superuser, then reload the panel.</span></div></div>
+          <div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg)"><code class="mono" style="font-size: 12px; flex: 1"><span class="kw">CREATE EXTENSION</span> pg_stat_statements;</code><button class="btn btn-sm" type="button">Copy</button></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Query error, underlined at its position</h2>
+        <div class="code" style="border: 1px solid var(--border); border-radius: 8px; padding: 10px 0; background: var(--bg); font-size: 13px; line-height: 22px">
+          <div style="display: flex"><span class="muted" style="width: 40px; text-align: right; padding-right: 12px">1</span><span style="white-space: pre"><span class="kw">select</span> <span class="squig">o.stauts</span>, <span class="kw">count</span>(*)</span></div>
+          <div style="display: flex"><span class="muted" style="width: 40px; text-align: right; padding-right: 12px">2</span><span style="white-space: pre"><span class="kw">from</span> orders o <span class="kw">group by</span> <span class="numl">1</span>;</span></div>
+        </div>
+        <div class="alert" role="alert" style="background: var(--err-bg); border-color: var(--err-line)">
+          <svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--destructive); margin-top: 1px"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4M12 16h.01"></path></svg>
+          <div style="display: flex; flex-direction: column; gap: 2px"><b style="font-weight: 600"><span class="mono">42703</span> column o.stauts does not exist</b><span style="font-size: 12px">Line 1, column 8 · <span class="muted">Hint: perhaps you meant to reference the column</span> <span class="mono">o.status</span>.</span></div>
+        </div>
+        <h2 style="margin-top: 6px">Chart series</h2>
+        <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: center">
+          <span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 28px; height: 28px; border-radius: 6px; background: var(--c1)" aria-hidden="true"></span><span class="mono" style="font-size: 12px">chart-1</span></span>
+          <span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 28px; height: 28px; border-radius: 6px; background: var(--c2)" aria-hidden="true"></span><span class="mono" style="font-size: 12px">chart-2</span></span>
+          <span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 28px; height: 28px; border-radius: 6px; background: var(--c3)" aria-hidden="true"></span><span class="mono" style="font-size: 12px">chart-3</span></span>
+        </div>
+        <p class="muted" style="margin: 0; font-size: 12px">Blue, orange, aqua in fixed order, stepped separately for dark. Colour-blind separation passes in both modes; aqua is under 3:1 on white, so every series also carries a direct label and a table view.</p>
+      </section>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1500}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { themeClass: (this.props.theme ?? 'light') === 'dark' ? 'dark' : '' };
+  }
+}
+</script>
+</body>
+</html>

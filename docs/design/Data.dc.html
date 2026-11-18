@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Kleos — Data grid</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.kl{--bg:#ffffff;--fg:#09090b;--card:#ffffff;--muted:#f4f4f5;--muted-fg:#5f5f67;--border:#e4e4e7;--input:#d4d4d8;--primary:#18181b;--primary-fg:#fafafa;--accent:#f4f4f5;--ring:#18181b;--sidebar:#fafafa;--chrome:#f4f4f5;--destructive:#dc2626;--upd:#fef3c7;--upd-fg:#854d0e;--upd-line:#d97706;--ins:#dcfce7;--ins-fg:#166534;--ins-line:#16a34a;--del:#fee2e2;--del-fg:#991b1b;--del-line:#dc2626;--kw:#7c3aed;--str:#15803d;--numl:#c2410c;font-family:Geist,system-ui,sans-serif;color:var(--fg);background:var(--bg);font-size:13px;line-height:1.45;-webkit-font-smoothing:antialiased}
+.kl.dark{--bg:#09090b;--fg:#fafafa;--card:#111113;--muted:#27272a;--muted-fg:#a1a1aa;--border:#27272a;--input:#3f3f46;--primary:#fafafa;--primary-fg:#18181b;--accent:#1f1f23;--ring:#d4d4d8;--sidebar:#0c0c0e;--chrome:#18181b;--destructive:#ef4444;--upd:#3a2a05;--upd-fg:#fcd34d;--upd-line:#f59e0b;--ins:#06301a;--ins-fg:#86efac;--ins-line:#22c55e;--del:#3b0d0d;--del-fg:#fca5a5;--del-line:#ef4444;--kw:#c4b5fd;--str:#86efac;--numl:#fdba74}
+.kl *{box-sizing:border-box}
+.mono{font-family:"Geist Mono",ui-monospace,monospace}
+.muted{color:var(--muted-fg)}
+.i{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 12px;border-radius:6px;font:500 13px/1 Geist,system-ui,sans-serif;border:1px solid transparent;cursor:pointer;white-space:nowrap;text-decoration:none;background:transparent;color:var(--fg)}
+.btn-p{background:var(--primary);color:var(--primary-fg)}
+.btn-o{background:var(--bg);border-color:var(--border);box-shadow:0 1px 2px rgba(0,0,0,.05)}
+.btn-sm{height:28px;padding:0 10px;font-size:12px}
+.btn-icon{width:32px;padding:0}
+.input{height:32px;width:100%;border:1px solid var(--input);border-radius:6px;background:var(--bg);color:var(--fg);padding:0 10px;font:400 13px Geist,system-ui,sans-serif}
+.badge{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;border-radius:9999px;font-size:11px;font-weight:500;border:1px solid var(--border);white-space:nowrap}
+.kbd{font:500 11px "Geist Mono",monospace;padding:1px 5px;border:1px solid var(--border);border-radius:4px;background:var(--muted);color:var(--muted-fg)}
+.tl{width:12px;height:12px;border-radius:50%;display:inline-block}
+.navi{display:flex;align-items:center;gap:8px;height:28px;padding:0 8px;border-radius:6px;color:var(--fg);text-decoration:none}
+.navi:hover{background:var(--accent);color:var(--fg)}
+.navi-on{background:var(--muted);font-weight:500}
+.navi .n{margin-left:auto;color:var(--muted-fg);font:400 11px "Geist Mono",monospace}
+.sect{display:flex;justify-content:space-between;padding:10px 8px 4px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--muted-fg)}
+.tabs{display:inline-flex;gap:2px;padding:3px;background:var(--muted);border-radius:8px}
+.tab{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 12px;border-radius:6px;color:var(--muted-fg);font-weight:500;text-decoration:none}
+.tab:hover{color:var(--fg)}
+.tab-on{background:var(--bg);color:var(--fg);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 4px 0 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);font-size:12px}
+.grid{border-collapse:separate;border-spacing:0;font-size:12px}
+.grid th,.grid td{height:30px;padding:0 10px;border-bottom:1px solid var(--border);border-right:1px solid var(--border);white-space:nowrap;text-align:left;vertical-align:middle}
+.grid th{background:var(--sidebar);font-weight:600;position:sticky;top:0;height:44px;z-index:1}
+.grid th small{display:block;font:400 10.5px "Geist Mono",monospace;color:var(--muted-fg)}
+.grid td.g{width:44px;text-align:right;color:var(--muted-fg);font:400 11px "Geist Mono",monospace;background:var(--sidebar)}
+.num{text-align:right!important;font-family:"Geist Mono",monospace}
+.null{color:var(--muted-fg);font:italic 500 11px "Geist Mono",monospace;letter-spacing:.02em}
+.c-upd{background:var(--upd)!important;color:var(--upd-fg);box-shadow:inset 3px 0 0 var(--upd-line)}
+.r-ins td{background:var(--ins);color:var(--ins-fg)}
+.r-del td{background:var(--del);color:var(--del-fg);text-decoration:line-through}
+.c-sel{box-shadow:inset 0 0 0 2px var(--ring)}
+.code{font:400 12px/1.7 "Geist Mono",monospace}
+.kw{color:var(--kw)}.str{color:var(--str)}.numl{color:var(--numl)}.cm{color:var(--muted-fg)}
+a{color:var(--fg)}a:hover{color:var(--muted-fg)}
+</style>
+</helmet>
+<div class="kl {{themeClass}}" style="width: 100%; min-height: 980px; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 10px; overflow: hidden">
+  <header style="height: 40px; flex: none; display: flex; align-items: center; gap: 12px; padding: 0 14px; background: var(--chrome); border-bottom: 1px solid var(--border)">
+    <div style="display: flex; gap: 8px" aria-hidden="true"><span class="tl" style="background: #ff5f57"></span><span class="tl" style="background: #febc2e"></span><span class="tl" style="background: #28c840"></span></div>
+    <div style="flex: 1; text-align: center; font-weight: 600">shop_dev <span class="muted" style="font-weight: 400">— kleos@localhost:5432</span></div>
+    <span class="badge mono">PG 16.4</span>
+  </header>
+
+  <div style="flex: 1; display: flex; flex-wrap: wrap; min-height: 0">
+    <aside style="flex: 1 1 248px; max-width: 100%; background: var(--sidebar); border-right: 1px solid var(--border); padding: 12px; display: flex; flex-direction: column; gap: 10px">
+      <button class="btn btn-o" type="button" style="justify-content: space-between; width: 100%" aria-haspopup="listbox" aria-label="Schema: public"><span style="display: flex; align-items: center; gap: 8px"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5v14a9 3 0 0 0 18 0V5"></path><path d="M3 12a9 3 0 0 0 18 0"></path></svg>public</span><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 15 5 5 5-5M7 9l5-5 5 5"></path></svg></button>
+      <div style="position: relative">
+        <svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="position: absolute; left: 10px; top: 8px"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
+        <input class="input" aria-label="Filter tables" placeholder="Filter" style="padding-left: 32px">
+      </div>
+      <nav aria-label="Schema objects" style="display: flex; flex-direction: column; gap: 1px">
+        <div class="sect"><span>Tables</span><span>6</span></div>
+        <a class="navi" href="Data.dc.html"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M3 15h18M9 3v18"></path></svg>categories<span class="n">48</span></a>
+        <a class="navi" href="Data.dc.html"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M3 15h18M9 3v18"></path></svg>customers<span class="n">12.4k</span></a>
+        <a class="navi" href="Data.dc.html"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M3 15h18M9 3v18"></path></svg>order_items<span class="n">3.9M</span></a>
+        <a class="navi navi-on" href="Data.dc.html" aria-current="true"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M3 15h18M9 3v18"></path></svg>orders<span class="n">1.2M</span></a>
+        <a class="navi" href="Data.dc.html"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M3 15h18M9 3v18"></path></svg>payments<span class="n">1.1M</span></a>
+        <a class="navi" href="Data.dc.html"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M3 15h18M9 3v18"></path></svg>products<span class="n">2,184</span></a>
+        <div class="sect"><span>Views</span><span>2</span></div>
+        <a class="navi" href="Data.dc.html"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>active_customers</a>
+        <a class="navi" href="Data.dc.html"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>order_totals</a>
+        <div class="sect"><span>Enums</span><span>2</span></div>
+        <a class="navi" href="Schema.dc.html"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"></path></svg>order_status</a>
+        <a class="navi" href="Schema.dc.html"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"></path></svg>payment_method</a>
+      </nav>
+      <div style="margin-top: auto; display: flex; align-items: center; gap: 8px; padding: 8px; border-top: 1px solid var(--border); font-size: 12px">
+        <span style="width: 8px; height: 8px; border-radius: 50%; background: #22c55e" aria-hidden="true"></span>
+        <span>Connected</span>
+        <span class="muted">· 4 pooled</span>
+      </div>
+    </aside>
+
+    <main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column">
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--border)">
+        <nav class="tabs" aria-label="Workspace">
+          <a class="tab" href="Schema.dc.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><rect x="16" y="16" width="6" height="6" rx="1"></rect><rect x="2" y="16" width="6" height="6" rx="1"></rect><rect x="9" y="2" width="6" height="6" rx="1"></rect><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3M12 12V8"></path></svg>Schema</a>
+          <a class="tab tab-on" href="Data.dc.html" aria-current="page"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M3 15h18M9 3v18"></path></svg>Data</a>
+          <a class="tab" href="Query.dc.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><path d="m16 18 6-6-6-6M8 6l-6 6 6 6"></path></svg>Query</a>
+          <a class="tab" href="Monitor.dc.html"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>Monitor</a>
+        </nav>
+        <div style="display: flex; align-items: center; gap: 6px; font-size: 13px"><span class="muted">public</span><span class="muted">/</span><b style="font-weight: 600">orders</b></div>
+        <span style="flex: 1"></span>
+        <button class="btn btn-o" type="button"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5v14"></path></svg>Add row</button>
+        <button class="btn btn-o btn-icon" type="button" aria-label="Reload rows"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path><path d="M8 16H3v5"></path></svg></button>
+      </div>
+
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg)">
+        <svg class="i muted" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"></path></svg>
+        <span class="chip"><span class="mono">placed_at</span><span class="muted">≥</span><span class="mono">2026-11-01</span><button class="btn btn-icon" type="button" aria-label="Remove filter placed_at" style="width: 22px; height: 22px"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="width: 12px; height: 12px"><path d="M18 6 6 18M6 6l12 12"></path></svg></button></span>
+        <span class="chip"><span class="mono">status</span><span class="muted">is not</span><span class="mono">null</span><button class="btn btn-icon" type="button" aria-label="Remove filter status" style="width: 22px; height: 22px"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="width: 12px; height: 12px"><path d="M18 6 6 18M6 6l12 12"></path></svg></button></span>
+        <button class="btn btn-sm" type="button" style="border: 1px dashed var(--input)"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px"><path d="M5 12h14M12 5v14"></path></svg>Add filter</button>
+        <span class="muted" style="font-size: 12px">AND</span>
+        <div style="flex: 1 1 280px; display: flex; align-items: center; border: 1px solid var(--input); border-radius: 6px; height: 28px; overflow: hidden">
+          <label for="raw-where" class="mono" style="padding: 0 8px; height: 100%; display: flex; align-items: center; background: var(--muted); font-size: 11px; font-weight: 500; border-right: 1px solid var(--input)">WHERE</label>
+          <input id="raw-where" class="mono" value="metadata-&gt;&gt;'channel' &lt;&gt; 'admin'" style="flex: 1; height: 100%; border: 0; padding: 0 8px; background: var(--bg); color: var(--fg); font-size: 12px; min-width: 0">
+        </div>
+      </div>
+
+      <div style="flex: 1; display: flex; flex-wrap: wrap; min-height: 0">
+        <div style="flex: 999 1 520px; min-width: 0; overflow: auto; position: relative" role="region" aria-label="orders rows">
+          <table class="grid" style="min-width: 100%">
+            <thead>
+              <tr>
+                <th style="width: 44px; text-align: right" class="muted"><span class="mono" style="font-size: 11px; font-weight: 400">#</span></th>
+                <th class="num"><span style="display: inline-flex; gap: 4px; align-items: center"><svg class="i" viewBox="0 0 24 24" role="img" aria-label="Primary key" style="width: 11px; height: 11px; color: #d97706"><circle cx="7.5" cy="15.5" r="5.5"></circle><path d="m21 2-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"></path></svg>id</span><small>int8</small></th>
+                <th>customer_id<small>uuid → customers</small></th>
+                <th>status<small>order_status</small></th>
+                <th class="num">total<small>numeric(12,2)</small></th>
+                <th><span style="display: inline-flex; gap: 4px; align-items: center">placed_at<svg class="i" viewBox="0 0 24 24" role="img" aria-label="Sorted descending" style="width: 12px; height: 12px"><path d="M12 5v14M19 12l-7 7-7-7"></path></svg></span><small>timestamptz</small></th>
+                <th style="width: 100%">metadata<small>jsonb</small></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td class="g">1</td><td class="num">100512</td><td class="mono">3f1c2a9e-8b7d-4c11-9e2f-0a6b5d4c3e21 <a href="Data.dc.html" aria-label="Open customer 3f1c2a9e" style="display: inline-flex; vertical-align: middle"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="width: 12px; height: 12px"><path d="M7 17 17 7M7 7h10v10"></path></svg></a></td><td>paid</td><td class="num">129.90</td><td class="mono">2026-11-17 18:42:13+04</td><td class="mono c-sel" style="max-width: 280px; overflow: hidden; text-overflow: ellipsis">{"utm": {"source": "newsletter", "campaign": …</td></tr>
+              <tr><td class="g">2</td><td class="num">100511</td><td class="mono">a7e09b44-12cd-4f8a-b3e1-6c2d90f7a512 <a href="Data.dc.html" aria-label="Open customer a7e09b44" style="display: inline-flex; vertical-align: middle"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="width: 12px; height: 12px"><path d="M7 17 17 7M7 7h10v10"></path></svg></a></td><td>pending</td><td class="num">64.00</td><td class="mono">2026-11-17 18:05:51+04</td><td class="mono">{"channel": "ios"}</td></tr>
+              <tr><td class="g"><span style="display: inline-flex; gap: 4px; align-items: center; color: var(--upd-fg)"><svg class="i" viewBox="0 0 24 24" role="img" aria-label="Changed" style="width: 11px; height: 11px"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>3</span></td><td class="num">100510</td><td class="mono">0c55d1e2-77ab-4e90-8f13-d24a61b0c9f7 <a href="Data.dc.html" aria-label="Open customer 0c55d1e2" style="display: inline-flex; vertical-align: middle"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="width: 12px; height: 12px"><path d="M7 17 17 7M7 7h10v10"></path></svg></a></td><td>shipped</td><td class="num c-upd" title="Was 1249.00">1194.00</td><td class="mono">2026-11-17 17:58:02+04</td><td class="mono">{"gift": true, "channel": "web"}</td></tr>
+              <tr><td class="g">4</td><td class="num">100509</td><td class="mono">9b2e47c1-5f0a-4d6e-a8c3-71e2b9d04f18 <a href="Data.dc.html" aria-label="Open customer 9b2e47c1" style="display: inline-flex; vertical-align: middle"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="width: 12px; height: 12px"><path d="M7 17 17 7M7 7h10v10"></path></svg></a></td><td>delivered</td><td class="num">18.50</td><td class="mono" style="position: relative">2026-11-17 16:31:40+04<span role="tooltip" style="position: absolute; left: 24px; top: 26px; z-index: 2; padding: 4px 8px; border-radius: 6px; background: var(--primary); color: var(--primary-fg); font-size: 11px; box-shadow: 0 4px 12px rgba(0,0,0,.15)">UTC 2026-11-17 12:31:40</span></td><td><span class="null">NULL</span></td></tr>
+              <tr><td class="g"><span style="display: inline-flex; gap: 4px; align-items: center; color: var(--upd-fg)"><svg class="i" viewBox="0 0 24 24" role="img" aria-label="Changed" style="width: 11px; height: 11px"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>5</span></td><td class="num">100508</td><td class="mono">e41a0f7d-3c92-4b85-9d16-2f8c7a5e0b34 <a href="Data.dc.html" aria-label="Open customer e41a0f7d" style="display: inline-flex; vertical-align: middle"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="width: 12px; height: 12px"><path d="M7 17 17 7M7 7h10v10"></path></svg></a></td><td class="c-upd" title="Was paid">cancelled</td><td class="num">342.75</td><td class="mono">2026-11-17 15:12:09+04</td><td class="mono">{"channel": "android"}</td></tr>
+              <tr><td class="g">6</td><td class="num">100507</td><td class="mono">5d8c3b26-a1e4-4f97-b0d2-8e6f1c3a7d59 <a href="Data.dc.html" aria-label="Open customer 5d8c3b26" style="display: inline-flex; vertical-align: middle"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="width: 12px; height: 12px"><path d="M7 17 17 7M7 7h10v10"></path></svg></a></td><td>shipped</td><td class="num">77.20</td><td class="mono">2026-11-17 14:47:55+04</td><td class="mono">{"channel": "web"}</td></tr>
+              <tr><td class="g">7</td><td class="num">100506</td><td class="mono">c2f9e8a1-6b3d-4a05-91c7-4d0e2f8b6a13 <a href="Data.dc.html" aria-label="Open customer c2f9e8a1" style="display: inline-flex; vertical-align: middle"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="width: 12px; height: 12px"><path d="M7 17 17 7M7 7h10v10"></path></svg></a></td><td>paid</td><td class="num">2410.00</td><td class="mono">2026-11-17 13:20:31+04</td><td class="mono">{"b2b": true, "channel": "web"}</td></tr>
+              <tr class="r-del"><td class="g"><span style="display: inline-flex; gap: 4px; align-items: center; text-decoration: none"><svg class="i" viewBox="0 0 24 24" role="img" aria-label="Deleted" style="width: 11px; height: 11px"><path d="M5 12h14"></path></svg>8</span></td><td class="num">100505</td><td class="mono">71ab3e90-d4c8-4f2a-8b61-93e05c7f2d48</td><td>paid</td><td class="num">59.00</td><td class="mono">2026-11-17 11:03:17+04</td><td class="mono">{"channel": "ios"}</td></tr>
+              <tr><td class="g">9</td><td class="num">100504</td><td class="mono">8e3d1f52-0b7a-4c96-a2e4-5f1c8d903b67 <a href="Data.dc.html" aria-label="Open customer 8e3d1f52" style="display: inline-flex; vertical-align: middle"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="width: 12px; height: 12px"><path d="M7 17 17 7M7 7h10v10"></path></svg></a></td><td>delivered</td><td class="num">15.00</td><td class="mono">2026-11-17 10:58:44+04</td><td><span class="null">NULL</span></td></tr>
+              <tr><td class="g">10</td><td class="num">100503</td><td class="mono">b6f04a2d-9e15-4c83-a7d0-1e2b3c4d5f60 <a href="Data.dc.html" aria-label="Open customer b6f04a2d" style="display: inline-flex; vertical-align: middle"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="width: 12px; height: 12px"><path d="M7 17 17 7M7 7h10v10"></path></svg></a></td><td>shipped</td><td class="num">230.40</td><td class="mono">2026-11-17 09:36:02+04</td><td class="mono">{"coupon": null, "channel": "android"}</td></tr>
+              <tr><td class="g">11</td><td class="num">100502</td><td class="mono">3f1c2a9e-8b7d-4c11-9e2f-0a6b5d4c3e21 <a href="Data.dc.html" aria-label="Open customer 3f1c2a9e" style="display: inline-flex; vertical-align: middle"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="width: 12px; height: 12px"><path d="M7 17 17 7M7 7h10v10"></path></svg></a></td><td>pending</td><td class="num">9.99</td><td class="mono">2026-11-17 08:14:29+04</td><td class="mono">{"channel": "web"}</td></tr>
+              <tr><td class="g">12</td><td class="num">100501</td><td class="mono">d09c7e14-2a6f-4b38-95e1-c7f8a0b2d4e6 <a href="Data.dc.html" aria-label="Open customer d09c7e14" style="display: inline-flex; vertical-align: middle"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="width: 12px; height: 12px"><path d="M7 17 17 7M7 7h10v10"></path></svg></a></td><td>paid</td><td class="num">145.00</td><td class="mono">2026-11-17 07:51:06+04</td><td class="mono">{"channel": "web"}</td></tr>
+              <tr class="r-ins"><td class="g"><span style="display: inline-flex; gap: 4px; align-items: center"><svg class="i" viewBox="0 0 24 24" role="img" aria-label="New row" style="width: 11px; height: 11px"><path d="M5 12h14M12 5v14"></path></svg>new</span></td><td class="num"><span class="null" style="color: inherit">DEFAULT</span></td><td class="mono">3f1c2a9e-8b7d-4c11-9e2f-0a6b5d4c3e21</td><td>pending</td><td class="num">42.00</td><td><span class="null" style="color: inherit">DEFAULT</span></td><td class="mono">{"channel": "admin"}</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <aside aria-label="Cell value" style="flex: 1 1 300px; max-width: 100%; border-left: 1px solid var(--border); display: flex; flex-direction: column; background: var(--bg)">
+          <div style="padding: 12px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px">
+            <div style="display: flex; flex-direction: column">
+              <b style="font-weight: 600" class="mono">metadata</b>
+              <span class="muted" style="font-size: 11px">jsonb · row id 100512</span>
+            </div>
+            <div class="tabs" style="margin-left: auto; padding: 2px"><a class="tab tab-on" href="Data.dc.html" style="height: 24px; padding: 0 8px; font-size: 12px">Tree</a><a class="tab" href="Data.dc.html" style="height: 24px; padding: 0 8px; font-size: 12px">Raw</a></div>
+          </div>
+          <div class="code" style="padding: 12px 14px; flex: 1; font-size: 12px">
+            <div><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="width: 12px; height: 12px; vertical-align: -1px"><path d="m6 9 6 6 6-6"></path></svg> <span class="muted">{ 4 keys }</span></div>
+            <div style="padding-left: 18px">"channel": <span class="str">"web"</span></div>
+            <div style="padding-left: 18px">"coupon": <span class="str">"AUTUMN10"</span></div>
+            <div style="padding-left: 18px">"items_count": <span class="numl">3</span></div>
+            <div style="padding-left: 4px"><svg class="i muted" viewBox="0 0 24 24" aria-hidden="true" style="width: 12px; height: 12px; vertical-align: -1px"><path d="m6 9 6 6 6-6"></path></svg> "utm": <span class="muted">{ 2 keys }</span></div>
+            <div style="padding-left: 36px">"source": <span class="str">"newsletter"</span></div>
+            <div style="padding-left: 36px">"campaign": <span class="str">"black-friday"</span></div>
+          </div>
+          <div style="padding: 12px 14px; border-top: 1px solid var(--border); display: flex; gap: 8px; flex-wrap: wrap">
+            <button class="btn btn-o btn-sm" type="button">Edit JSON</button>
+            <button class="btn btn-o btn-sm" type="button">Set null</button>
+            <button class="btn btn-sm" type="button" style="margin-left: auto">Copy</button>
+          </div>
+        </aside>
+      </div>
+
+      <section aria-label="Pending changes" style="border-top: 1px solid var(--border); background: var(--sidebar)">
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 16px">
+          <b style="font-weight: 600">Pending changes</b>
+          <span class="badge" style="background: var(--upd); color: var(--upd-fg); border-color: transparent"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 10px; height: 10px"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>2 updated</span>
+          <span class="badge" style="background: var(--ins); color: var(--ins-fg); border-color: transparent"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 10px; height: 10px"><path d="M5 12h14M12 5v14"></path></svg>1 inserted</span>
+          <span class="badge" style="background: var(--del); color: var(--del-fg); border-color: transparent"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 10px; height: 10px"><path d="M5 12h14"></path></svg>1 deleted</span>
+          <span class="muted" style="font-size: 12px">Applied in one transaction — any failing statement rolls back all four.</span>
+          <span style="flex: 1"></span>
+          <button class="btn btn-o" type="button">Discard</button>
+          <button class="btn btn-p" type="button">Commit 4 changes<span class="kbd" style="background: transparent; border-color: rgba(127,127,127,.4); color: inherit">⌘S</span></button>
+        </div>
+        <pre class="code" style="margin: 0 16px 12px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); overflow-x: auto; font-size: 12px"><span class="kw">BEGIN</span>;
+<span class="kw">UPDATE</span> "public"."orders" <span class="kw">SET</span> "total" = <span class="numl">1194.00</span>::numeric <span class="kw">WHERE</span> "id" = <span class="numl">100510</span>;          <span class="cm">-- was 1249.00</span>
+<span class="kw">UPDATE</span> "public"."orders" <span class="kw">SET</span> "status" = <span class="str">'cancelled'</span>::order_status <span class="kw">WHERE</span> "id" = <span class="numl">100508</span>;  <span class="cm">-- was 'paid'</span>
+<span class="kw">DELETE FROM</span> "public"."orders" <span class="kw">WHERE</span> "id" = <span class="numl">100505</span>;
+<span class="kw">INSERT INTO</span> "public"."orders" ("customer_id", "status", "total", "metadata")
+  <span class="kw">VALUES</span> (<span class="str">'3f1c2a9e-8b7d-4c11-9e2f-0a6b5d4c3e21'</span>::uuid, <span class="str">'pending'</span>::order_status, <span class="numl">42.00</span>::numeric, <span class="str">'{"channel": "admin"}'</span>::jsonb);
+<span class="kw">COMMIT</span>;</pre>
+      </section>
+
+      <footer style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 8px 16px; border-top: 1px solid var(--border); font-size: 12px">
+        <span>Rows 1–200 of <span class="mono">~1,204,380</span> <span class="muted">(planner estimate)</span></span>
+        <button class="btn btn-sm" type="button" style="text-decoration: underline; text-underline-offset: 3px; padding: 0 4px">Count exactly</button>
+        <span style="flex: 1"></span>
+        <span class="muted">200 per page</span>
+        <button class="btn btn-o btn-sm btn-icon" type="button" aria-label="Previous page" disabled style="opacity: .5; width: 28px"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg></button>
+        <span class="mono">1 / 6,022</span>
+        <button class="btn btn-o btn-sm btn-icon" type="button" aria-label="Next page" style="width: 28px"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg></button>
+      </footer>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { themeClass: (this.props.theme ?? 'light') === 'dark' ? 'dark' : '' };
+  }
+}
+</script>
+</body>
+</html>
