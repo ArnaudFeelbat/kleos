@@ -109,7 +109,8 @@ if (!app.requestSingleInstanceLock()) {
   void app.whenReady().then(async () => {
     server = await startServer({
       token,
-      dataDir: app.getPath('userData'),
+      // KLEOS_DATA_DIR isolates scripted runs (scripts/ui-tour.mjs) from the real app.db.
+      dataDir: process.env['KLEOS_DATA_DIR'] ?? app.getPath('userData'),
       staticDir: rendererDevUrl ? undefined : join(here, '../renderer'),
       allowedOrigins: rendererDevUrl ? [new URL(rendererDevUrl).origin] : [],
       version: app.getVersion(),

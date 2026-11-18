@@ -22,7 +22,20 @@ export function sidebarSections(model: SchemaModel | undefined, schema: string, 
 }
 
 /** "public" when the database has it, else the first user schema. */
-export function defaultSchema(schemas: string[]): string {
+/**
+ * The schema a workspace opens on: `public` when it holds tables or views, otherwise the
+ * schema with the most of them (so a database that keeps everything outside `public`
+ * does not open on an empty diagram), otherwise `public` or the first schema.
+ */
+export function defaultSchema(model: Pick<SchemaModel, 'schemas' | 'tables' | 'views'> | undefined): string {
+  const schemas = model?.schemas ?? [];
+  const counts = new Map<string, number>();
+  for (const r of [...(model?.tables ?? []), ...(model?.views ?? [])]) {
+    counts.set(r.schema, (counts.get(r.schema) ?? 0) + 1);
+  }
+  if ((counts.get('public') ?? 0) > 0) return 'public';
+  const busiest = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0];
+  if (busiest) return busiest[0];
   return schemas.includes('public') ? 'public' : (schemas[0] ?? 'public');
 }
 

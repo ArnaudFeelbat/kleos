@@ -193,7 +193,7 @@ export function useWorkspaceState(sid: string, session: SessionInfo) {
   const currentSchema =
     pickedSchema && (!schemaModel || schemaModel.schemas.includes(pickedSchema))
       ? pickedSchema
-      : defaultSchema(schemaModel?.schemas ?? []);
+      : defaultSchema(schemaModel);
 
   const refreshSchema = useCallback(async () => {
     const fresh = await api.schema(sid, true);

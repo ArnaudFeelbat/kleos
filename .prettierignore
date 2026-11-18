@@ -4,3 +4,4 @@ dist
 release
 pnpm-lock.yaml
 packages/web/src/components/ui
+docs/design

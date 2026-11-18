@@ -138,7 +138,9 @@ describe('Kleos over HTTP against Postgres', () => {
     expect(bad.json).toMatchObject({ code: '22P02', editIndex: 1, column: 'total' });
 
     const good = await call('POST', `/sessions/${sid}/edits`, {
-      edits: [{ kind: 'update', table: { schema: 'shop', name: 'orders' }, key: { id: firstId }, set: { total: '12.50' } }],
+      edits: [
+        { kind: 'update', table: { schema: 'shop', name: 'orders' }, key: { id: firstId }, set: { total: '12.50' } },
+      ],
     });
     expect(good.status).toBe(200);
     // The failed batch rolled back as a whole: note was not changed by it.

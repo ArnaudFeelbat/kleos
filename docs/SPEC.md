@@ -8,8 +8,10 @@
 > `docs/design/*.dc.html` (one file per screen; open in a browser or read the markup).
 
 ## Overview
+
 Kleos is a personal Postgres client for one Mac, in the spirit of Postico: log in to a database, then explore its schema, browse and edit rows, run queries with charts, and watch live stats.
 In scope for v1:
+
 - Saved connections with a Postico-style login form
 
 - Schema explorer with an ER diagram
@@ -21,6 +23,7 @@ In scope for v1:
 - Monitoring of sessions, locks, throughput and slow queries
 
 Out of scope for v1:
+
 - Engines other than Postgres (the adapter layer keeps this cheap to add later)
 
 - Schema changes through the UI (create or alter tables); use the SQL editor
@@ -30,6 +33,7 @@ Out of scope for v1:
 - Import and export beyond copying results as CSV
 
 ## Stack
+
 TypeScript end to end, as a macOS desktop app built with Electron. The main process runs a small local server on Node, and the window loads the React frontend from it. electron-vite handles development and electron-builder produces Kleos.app.
 Layer
 Choice
@@ -71,10 +75,14 @@ Shared types
 Zod schemas in a shared package
 One definition for API payloads on both sides
 Versions are not pinned here; take the current stable release of each at project start.
+
 ## Architecture
+
 Three layers: a React frontend, a local server that owns every database session, and Postgres. The frontend only knows the typed API.
 The four frontend modules share one typed client. Inside the server, the API calls the adapter for database work and the app store for the app's own data; passwords live in the Keychain, apart from the SQLite file.
+
 ## Connections
+
 The start screen is a list of saved favorites; opening one shows a login form, and Connect opens the database workspace in its own window.
 Form fields:
 Field
@@ -104,6 +112,7 @@ Read-only
 Off
 Blocks edits and opens sessions with default_transaction_read_only = on
 Behavior:
+
 - Paste a URL. Pasting a postgres://user:pass@host:5432/db?sslmode=require string into any field fills the whole form.
 
 - Test connection. Connects, runs select version(), and shows the driver's real error on failure (bad password, host unreachable, SSL required).
@@ -115,50 +124,53 @@ Behavior:
 - Localhost only. The server binds to 127.0.0.1 and requires a random per-launch token on every request, since it holds live database sessions.
 
 SSH tunnel (SSH host, user, key file) is planned for v1.1, using the ssh2 library to forward a local port.
+
 ## Adapter contract
+
 Every feature talks to the database through one interface, so the frontend never sees Postgres-specific code and a second engine means one new file.
 <;
-  test(config: ConnectionConfig, password: string | null): Promise]]><;
+test(config: ConnectionConfig, password: string | null): Promise]]><;
 }
 
 interface Session {
-  introspect(): Promise]]><;
-  fetchRows(req: RowsRequest): Promise]]><;
-  estimateCount(table: TableRef): Promise]]><;
-  applyEdits(edits: RowEdit[]): Promise]]><;
-  runQuery(sql: string, opts: QueryOptions): Promise]]><;
-  stats(kind: StatsKind): Promise]]><;
-  close(): Promise]]><;
+introspect(): Promise]]><;
+fetchRows(req: RowsRequest): Promise]]><;
+estimateCount(table: TableRef): Promise]]><;
+applyEdits(edits: RowEdit[]): Promise]]><;
+runQuery(sql: string, opts: QueryOptions): Promise]]><;
+stats(kind: StatsKind): Promise]]><;
+close(): Promise]]><;
 }
 
 interface QueryHandle {
-  id: string;
-  columns: ColumnMeta[];
-  nextPage(size: number): Promise]]><;
-  cancel(): Promise]]><;
-  close(): Promise]]><;
+id: string;
+columns: ColumnMeta[];
+nextPage(size: number): Promise]]><;
+cancel(): Promise]]><;
+close(): Promise]]><;
 }
 
 interface SchemaModel {
-  schemas: string[];
-  tables: Table[];        // columns, primary key, indexes, row estimate
-  foreignKeys: ForeignKey[];
-  views: View[];
-  enums: EnumType[];
+schemas: string[];
+tables: Table[]; // columns, primary key, indexes, row estimate
+foreignKeys: ForeignKey[];
+views: View[];
+enums: EnumType[];
 }
 
 type RowsRequest = {
-  table: TableRef;
-  limit: number;
-  offset: number;
-  sort: { column: string; dir: "asc" | "desc" }[];
-  filters: Filter[];      // column, operator, value; compiled to parameters
+table: TableRef;
+limit: number;
+offset: number;
+sort: { column: string; dir: "asc" | "desc" }[];
+filters: Filter[]; // column, operator, value; compiled to parameters
 };
 
 type RowEdit =
-  | { kind: "update"; table: TableRef; key: Record]]><; set: Record]]>< }
-  | { kind: "insert"; table: TableRef; values: Record]]>< }
-  | { kind: "delete"; table: TableRef; key: Record]]>< };]]>Rules the Postgres adapter follows:
+| { kind: "update"; table: TableRef; key: Record]]><; set: Record]]>< }
+| { kind: "insert"; table: TableRef; values: Record]]>< }
+| { kind: "delete"; table: TableRef; key: Record]]>< };]]>Rules the Postgres adapter follows:
+
 - Identifiers are always quoted and values are always parameters; the adapter never builds SQL by concatenating user input.
 
 - applyEdits runs in one transaction and fails the whole batch if any statement affects any number of rows other than 1.
@@ -168,8 +180,11 @@ type RowEdit =
 - cancel calls pg_cancel_backend from a second connection.
 
 ## Features
+
 The workspace has a sidebar listing schemas, tables and views, and four tabs: Schema, Data, Query and Monitor.
+
 ### Schema and ER diagram
+
 - Introspection reads pg_catalog once on connect and again on a manual refresh; system schemas are hidden by default.
 
 - Each table is a React Flow node listing its columns with type, primary-key and nullable markers. Each foreign key is an edge between the two columns.
@@ -181,6 +196,7 @@ The workspace has a sidebar listing schemas, tables and views, and four tabs: Sc
 - A schema picker and a search box focus the diagram; above roughly 150 tables, only the selected table and its neighbors are drawn.
 
 ### Data grid and editing
+
 - Rows load 200 at a time with server-side sorting and filtering. The footer shows the planner's row estimate, with an exact count on request.
 
 - Filters are built per column (equals, contains, greater than, is null) and combined with AND. A raw WHERE box covers everything else.
@@ -194,6 +210,7 @@ The workspace has a sidebar listing schemas, tables and views, and four tabs: Sc
 - Commit applies all staged edits in one transaction; Discard drops them.
 
 ### Query editor and charts
+
 - CodeMirror with the Postgres dialect. Autocomplete is fed by the introspected schema.
 
 - Run executes the selection, or the statement under the cursor. Cancel stops it.
@@ -209,6 +226,7 @@ The workspace has a sidebar listing schemas, tables and views, and four tabs: Sc
 - Every run is saved to history. A query and its chart settings can be saved by name per connection.
 
 ### Monitoring
+
 Each panel polls its source while the Monitor tab is visible and stops when it is not.
 Panel
 Source
@@ -231,6 +249,7 @@ pg_stat_user_indexes
 Slow queries
 pg_stat_statements
 30 s
+
 - Throughput is a rate, so the server keeps the previous sample and returns the difference per second, charted over the last 15 minutes in memory.
 
 - The Sessions panel can cancel or terminate a backend, with a confirmation.
@@ -238,6 +257,7 @@ pg_stat_statements
 - If pg_stat_statements is not installed, the panel says so and shows the CREATE EXTENSION statement instead of an error.
 
 ## Postgres type handling
+
 The server sends every value as a string or null, plus the column's type name, and the frontend decides how to show and edit it. This avoids JavaScript silently rounding bigint and numeric or shifting timestamps.
 Type
 Shown as
@@ -283,7 +303,9 @@ The server's text form
 Text input, cast by Postgres
 Null is shown as a dim NULL and is distinct from an empty string. Each editor has a "Set null" action, and "Set default" on inserts.
 On write, values go back as text parameters with an explicit cast to the column type, so Postgres does the parsing and reports any error per cell.
+
 ## API routes
+
 All routes are JSON over HTTP on 127.0.0.1, prefixed /api, and validated with the shared Zod schemas. :sid is the id of an open session.
 Method
 Path
@@ -349,11 +371,16 @@ GET, POST, PUT, DELETE
 /saved-queries
 Saved queries and chart settings
 Errors return { code, message, detail?, position? }, carrying the Postgres error code and character position so the editor can underline the failing token.
+
 ## App store
+
 The app's own data lives in one SQLite file at ~/Library/Application Support/Kleos/app.db. It holds no passwords.
 History keeps the latest 1,000 entries per connection. Migrations are numbered SQL files applied at startup against schema_version.
+
 ## Build order
+
 Ten milestones, each usable on its own and each reusing the one before it.
+
 - Skeleton. Monorepo with desktop, server, web and shared packages; one command starts the Electron app in development with live reload. Done when the window shows a health check answered through the typed client.
 
 - Connections. Favorites list, login form, URL paste, Keychain storage, Test and Connect. Done when a saved favorite reconnects after a restart without retyping the password.
@@ -375,7 +402,9 @@ Ten milestones, each usable on its own and each reusing the one before it.
 - Packaging. App icon, native menus and shortcuts, one window per connection, build with electron-builder. Done when Kleos.app launches from the Applications folder with no terminal open.
 
 Automated tests run against a throwaway Postgres in Docker, seeded with one table per type in the type-handling section.
+
 ## Decisions
+
 - Name: Kleos.
 
 - Runtime: Node.
@@ -387,5 +416,3 @@ Automated tests run against a throwaway Postgres in Docker, seeded with one tabl
 - Tables without a primary key: read-only in v1; no editing through ctid.
 
 - SSH tunnel: v1.1, on the assumption that the first target databases are directly reachable.
-
-

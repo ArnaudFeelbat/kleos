@@ -9,12 +9,12 @@ and explain plans, and watch live server stats.
 
 ## Layout
 
-| Path | What it is |
-| --- | --- |
-| `apps/desktop` | Electron main + preload (electron-vite), packaging (electron-builder) |
-| `packages/server` | Local Hono server: Postgres adapter (`pg`), SQLite app store, Keychain |
-| `packages/web` | React frontend (Vite, Tailwind 4, shadcn/ui, TanStack Query/Table/Virtual, React Flow, CodeMirror, Recharts) |
-| `packages/shared` | Zod schemas for the API, route table, SQL helpers |
+| Path              | What it is                                                                                                 |
+| ----------------- | ---------------------------------------------------------------------------------------------------------- |
+| `apps/desktop`    | Electron main + preload (electron-vite), packaging (electron-builder)                                      |
+| `packages/server` | Local Hono server: Postgres adapter (`pg`), SQLite app store, Keychain                                     |
+| `packages/web`    | React frontend (Vite, Tailwind 4, shadcn/ui, TanStack Query and Virtual, React Flow, CodeMirror, Recharts) |
+| `packages/shared` | Zod schemas for the API, route table, SQL helpers                                                          |
 
 The Electron main process starts the server on `127.0.0.1` with a random per-launch
 token; windows load the frontend and call the API with that token. Passwords live in the
