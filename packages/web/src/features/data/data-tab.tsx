@@ -1,5 +1,6 @@
 import { Table2 } from 'lucide-react';
 import { tableKey, type TableRef } from '@kleos/shared';
+import { EmptyState } from '@/features/common/empty-state';
 import { useWorkspace } from '@/features/workspace/context';
 import { TableView } from './table-view';
 
@@ -12,11 +13,11 @@ export function DataTab() {
   const ref = ws.selectedTable;
   if (!ref) {
     return (
-      <div className="text-muted-foreground flex flex-1 flex-col items-center justify-center gap-2 p-10 text-center">
-        <Table2 className="size-6" aria-hidden="true" />
-        <p className="text-foreground font-medium">No table selected</p>
-        <p className="max-w-sm text-xs">Pick a table or view in the sidebar to browse, filter and edit its rows.</p>
-      </div>
+      <EmptyState
+        icon={Table2}
+        title="No table selected"
+        hint="Pick a table or view in the sidebar to browse, filter and edit its rows."
+      />
     );
   }
   const key = tableKey(ref);

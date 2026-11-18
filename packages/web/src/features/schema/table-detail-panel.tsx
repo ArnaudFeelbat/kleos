@@ -1,8 +1,9 @@
 import type { Column, Constraint, ForeignKey, Index, Table, TableRef } from '@kleos/shared';
-import { ArrowRight, ArrowUpRight, KeyRound, X } from 'lucide-react';
+import { ArrowRight, ArrowUpRight, Code, Eye, KeyRound, Table2, X } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { sectionLabel } from '@/features/common/styles';
 import { formatBytes, formatInt } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { shortType } from './er-model';
@@ -65,30 +66,42 @@ export function TableDetailPanel({ table, foreignKeys, onClose, onOpenTable, onV
   };
 
   return (
-    <aside aria-label="Table details" className="bg-background flex w-[340px] shrink-0 flex-col border-l">
-      <div className="flex flex-col gap-1.5 border-b p-4">
-        <div className="flex items-center gap-2">
-          <h2 className="truncate text-base font-semibold">{table.name}</h2>
+    <aside
+      aria-label="Table details"
+      className="bg-background animate-in fade-in-0 slide-in-from-right-2 flex w-[340px] shrink-0 flex-col border-l duration-200"
+    >
+      <div className="flex flex-col gap-2 border-b p-4">
+        <div className="flex items-center gap-2.5">
+          <span className="bg-brand-soft text-brand-text flex size-7 shrink-0 items-center justify-center rounded-lg">
+            {table.kind === 'view' || table.kind === 'materialized' ? (
+              <Eye className="size-3.5" aria-hidden="true" />
+            ) : (
+              <Table2 className="size-3.5" aria-hidden="true" />
+            )}
+          </span>
+          <h2 className="truncate text-[15px] font-semibold tracking-[-0.012em]">{table.name}</h2>
           <Badge variant="outline" className="h-5 font-mono text-[11px]">
             {table.schema}
           </Badge>
           <Button
             variant="ghost"
             size="icon-sm"
-            className="ml-auto size-7"
+            className="text-muted-foreground ml-auto"
             aria-label="Close details"
             title="Close (Esc)"
             onClick={onClose}
           >
-            <X className="text-muted-foreground" aria-hidden="true" />
+            <X aria-hidden="true" />
           </Button>
         </div>
-        <span className="text-muted-foreground text-xs">{relationSummary(table)}</span>
-        {table.comment && <p className="text-muted-foreground text-xs italic">{table.comment}</p>}
+        <span className="text-muted-foreground tabular text-xs">{relationSummary(table)}</span>
+        {table.comment && (
+          <p className="text-muted-foreground border-border border-l-2 pl-2 text-xs italic">{table.comment}</p>
+        )}
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pt-1 pb-4">
-        <SectionTitle>Columns</SectionTitle>
+        <SectionTitle count={table.columns.length}>Columns</SectionTitle>
         {table.columns.map((column) => {
           const isPk = table.primaryKey.includes(column.name);
           const ref = refOf(column.name);
@@ -97,20 +110,20 @@ export function TableDetailPanel({ table, foreignKeys, onClose, onOpenTable, onV
               {isPk ? (
                 <KeyRound className="text-primary-key size-3 shrink-0" role="img" aria-label="Primary key" />
               ) : ref ? (
-                <ArrowUpRight className="text-muted-foreground size-3 shrink-0" role="img" aria-label="Foreign key" />
+                <ArrowUpRight className="text-brand-text size-3 shrink-0" role="img" aria-label="Foreign key" />
               ) : (
                 <span className="w-3 shrink-0" />
               )}
               <span className={cn('truncate', isPk && 'font-semibold')}>{column.name}</span>
               {column.nullable && (
-                <Badge variant="outline" className="h-[18px] px-1.5 text-[10px] font-medium">
+                <Badge variant="outline" className="text-muted-foreground h-[18px] px-1.5 text-[10px] font-medium">
                   nullable
                 </Badge>
               )}
               {ref ? (
                 <button
                   type="button"
-                  className="ml-auto shrink-0 truncate font-mono text-[11px] underline-offset-2 hover:underline"
+                  className="text-brand-text hover:bg-brand-soft -mr-1 ml-auto shrink-0 truncate rounded-[4px] px-1 font-mono text-[11px] underline-offset-2 hover:underline"
                   title={`${columnDetail(column)} — open ${ref.schema}.${ref.name}`}
                   onClick={() => onOpenTable({ schema: ref.schema, name: ref.name })}
                 >
@@ -131,7 +144,7 @@ export function TableDetailPanel({ table, foreignKeys, onClose, onOpenTable, onV
 
         {table.indexes.length > 0 && (
           <>
-            <SectionTitle>Indexes</SectionTitle>
+            <SectionTitle count={table.indexes.length}>Indexes</SectionTitle>
             {table.indexes.map((index) => (
               <Row key={index.name} className="font-mono text-[11.5px]">
                 <span className="truncate" title={index.definition}>
@@ -145,7 +158,7 @@ export function TableDetailPanel({ table, foreignKeys, onClose, onOpenTable, onV
 
         {table.constraints.length > 0 && (
           <>
-            <SectionTitle>Constraints</SectionTitle>
+            <SectionTitle count={table.constraints.length}>Constraints</SectionTitle>
             {table.constraints.map((c) => (
               <Row key={c.name} className="flex-col items-start gap-0.5">
                 <span className="flex w-full items-center gap-2">
@@ -161,12 +174,13 @@ export function TableDetailPanel({ table, foreignKeys, onClose, onOpenTable, onV
         )}
       </div>
 
-      <div className="flex gap-2 border-t px-4 py-3">
-        <Button size="sm" className="flex-1" onClick={onViewData}>
+      <div className="bg-sidebar/60 flex gap-2 border-t px-4 py-3">
+        <Button className="flex-1" onClick={onViewData}>
           View data
           <ArrowRight aria-hidden="true" />
         </Button>
-        <Button size="sm" variant="outline" onClick={onOpenInQuery}>
+        <Button variant="outline" onClick={onOpenInQuery}>
+          <Code aria-hidden="true" />
           Open in query
         </Button>
       </div>
@@ -174,14 +188,24 @@ export function TableDetailPanel({ table, foreignKeys, onClose, onOpenTable, onV
   );
 }
 
-function SectionTitle({ children }: { children: ReactNode }) {
+function SectionTitle({ children, count }: { children: ReactNode; count?: number }) {
   return (
-    <h3 className="text-muted-foreground mt-4 mb-1 text-xs font-semibold tracking-[.04em] uppercase first:mt-3">
+    <h3 className={cn(sectionLabel, 'mt-5 mb-1 flex items-center justify-between first:mt-3.5')}>
       {children}
+      {count !== undefined && <span className="font-mono font-medium tracking-normal">{count}</span>}
     </h3>
   );
 }
 
 function Row({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn('flex items-center gap-2 border-b py-[7px] text-xs', className)}>{children}</div>;
+  return (
+    <div
+      className={cn(
+        'hover:bg-foreground/[0.025] -mx-2 flex items-center gap-2 border-b px-2 py-[7px] text-xs dark:hover:bg-white/[0.03]',
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
 }

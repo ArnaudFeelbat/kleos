@@ -9,6 +9,7 @@ import {
   YAxis,
   type TooltipContentProps,
 } from 'recharts';
+import { Skeleton } from '@/components/ui/skeleton';
 import { formatClock, formatCompact, formatNumber } from '@/lib/format';
 
 const axisTick = {
@@ -29,8 +30,13 @@ export function throughputSummary(samples: ThroughputSample[]): string {
 export function ThroughputChart({ samples }: { samples: ThroughputSample[] }) {
   if (samples.length < 2) {
     return (
-      <div className="text-muted-foreground flex h-[220px] items-center justify-center text-xs">
-        Collecting samples… the rate needs two snapshots, 5 s apart.
+      <div className="flex h-[220px] flex-col items-center justify-center gap-3 px-6">
+        <div className="flex h-12 w-48 items-end gap-1" aria-hidden="true">
+          {[40, 62, 48, 75, 58, 84, 66, 90].map((h, i) => (
+            <Skeleton key={i} className="flex-1 rounded-sm" style={{ height: `${h}%` }} />
+          ))}
+        </div>
+        <p className="text-muted-foreground text-xs">Collecting samples… the rate needs two snapshots, 5 s apart.</p>
       </div>
     );
   }
@@ -79,7 +85,7 @@ function ThroughputTooltip({ active, payload }: TooltipContentProps) {
   const sample = payload?.[0]?.payload as ThroughputSample | undefined;
   if (!active || !sample) return null;
   return (
-    <div className="bg-card flex flex-col gap-0.5 rounded-lg border px-2.5 py-2 text-xs shadow-[0_8px_24px_rgba(0,0,0,.12)]">
+    <div className="surface-overlay flex flex-col gap-0.5 rounded-lg px-2.5 py-2 text-xs">
       <span className="text-muted-foreground font-mono">{formatClock(sample.t)}</span>
       <span>
         <b className="font-mono font-semibold">{formatNumber(sample.xactPerSec)}</b> tx/s

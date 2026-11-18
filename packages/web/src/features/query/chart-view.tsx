@@ -1,4 +1,13 @@
-import { ChartColumn, ChartLine, ChartScatter, Plus, Save, X } from 'lucide-react';
+import {
+  ChartColumn,
+  ChartLine,
+  ChartNoAxesColumn,
+  ChartScatter,
+  Plus,
+  Save,
+  TriangleExclamationPoint,
+  X,
+} from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import {
   Bar,
@@ -26,9 +35,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip as UiTooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { classifyType, typeLabel } from '@/features/cells/classify';
+import { EmptyState } from '@/features/common/empty-state';
+import { segmentedItem, segmentedList } from '@/features/common/styles';
 import { DataGrid } from '@/features/grid/data-grid';
 import type { GridColumn, GridSelection } from '@/features/grid/types';
 import { formatInt } from '@/lib/format';
+import { cn } from '@/lib/utils';
 import {
   CHART_ROW_CAP,
   formatTick,
@@ -63,9 +75,7 @@ export function ChartView(props: ChartViewProps) {
 
   if (columns.length === 0) {
     return (
-      <p className="text-muted-foreground flex flex-1 items-center justify-center p-8 text-xs">
-        Run a query that returns rows to chart them.
-      </p>
+      <EmptyState icon={ChartLine} title="Nothing to chart yet" hint="Run a query that returns rows to chart them." />
     );
   }
 
@@ -79,13 +89,13 @@ export function ChartView(props: ChartViewProps) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-auto">
-      <div className="flex flex-wrap items-center gap-2.5 border-b px-3 py-2.5">
+      <div className="bg-sidebar/50 flex flex-wrap items-center gap-2.5 border-b px-3 py-2">
         <ToggleGroup
           type="single"
           value={base.type}
           onValueChange={(v) => v && onChange({ ...base, type: v as ChartSettings['type'] })}
           aria-label="Chart type"
-          className="bg-muted rounded-lg p-0.5"
+          className={segmentedList}
         >
           {chartTypes.map((t) => {
             const Icon = typeIcons[t];
@@ -93,9 +103,9 @@ export function ChartView(props: ChartViewProps) {
               <ToggleGroupItem
                 key={t}
                 value={t}
-                className="data-[state=on]:bg-background h-[26px] gap-1.5 rounded-md! px-2.5 text-xs capitalize data-[state=on]:shadow-sm"
+                className={cn(segmentedItem, 'min-w-0 rounded-md! capitalize hover:bg-transparent')}
               >
-                <Icon className="size-3.5" aria-hidden="true" />
+                <Icon aria-hidden="true" />
                 {t}
               </ToggleGroupItem>
             );
@@ -118,16 +128,19 @@ export function ChartView(props: ChartViewProps) {
         </Select>
         <span className="text-muted-foreground ml-1.5 text-xs">Y</span>
         {(data?.series ?? []).map((s) => (
-          <span key={s.column} className="inline-flex h-7 items-center gap-1.5 rounded-md border pr-1 pl-2.5 text-xs">
-            <span className="h-[3px] w-2.5 rounded-sm" style={{ background: s.color }} aria-hidden="true" />
+          <span
+            key={s.column}
+            className="bg-card inline-flex h-7 items-center gap-1.5 rounded-md pr-1 pl-2.5 text-xs shadow-[0_0_0_1px_var(--edge),var(--elev-1)] dark:bg-white/[0.04]"
+          >
+            <span className="h-[3px] w-2.5 rounded-full" style={{ background: s.color }} aria-hidden="true" />
             <span className="font-mono">{s.column}</span>
             <button
               type="button"
-              className="hover:bg-accent inline-flex size-5 items-center justify-center rounded-sm"
+              className="text-muted-foreground hover:text-foreground inline-flex size-5 items-center justify-center rounded-[4px] hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
               aria-label={`Remove ${s.column}`}
               onClick={() => onChange({ ...base, y: base.y.filter((y) => y !== s.column) })}
             >
-              <X className="text-muted-foreground size-3" aria-hidden="true" />
+              <X className="size-3" aria-hidden="true" />
             </button>
           </span>
         ))}
@@ -140,7 +153,7 @@ export function ChartView(props: ChartViewProps) {
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="border-input h-7 border border-dashed px-2.5 text-xs"
+                    className="border-foreground/20 text-foreground/75 hover:border-foreground/30 h-7 border border-dashed px-2.5 text-xs"
                     disabled={full || yChoices.length === 0}
                   >
                     <Plus className="size-3.5" aria-hidden="true" />
@@ -173,14 +186,16 @@ export function ChartView(props: ChartViewProps) {
       </div>
 
       {!settings || !data || data.series.length === 0 ? (
-        <p className="text-muted-foreground p-8 text-center text-xs">
-          No numeric column to plot yet. Add a y column with “Column”.
-        </p>
+        <EmptyState
+          icon={ChartNoAxesColumn}
+          title="No series to plot"
+          hint="No numeric column to plot yet. Add a y column with “Column”."
+        />
       ) : (
-        <figure className="bg-card m-4 flex flex-col gap-3.5 rounded-xl border px-5 pt-5 pb-4">
+        <figure className="surface-raised animate-in fade-in-0 m-4 flex flex-col gap-3.5 rounded-xl px-5 pt-5 pb-4 duration-200">
           <figcaption className="flex flex-wrap items-start gap-3">
             <div className="flex flex-col gap-0.5">
-              <b className="text-[15px] font-semibold">
+              <b className="text-[15px] font-semibold tracking-[-0.012em]">
                 {data.series.map((s) => s.column).join(', ')} by {settings.x}
               </b>
               <span className="text-muted-foreground text-xs">
@@ -193,7 +208,8 @@ export function ChartView(props: ChartViewProps) {
                 .
               </span>
               {(data.missing.length > 0 || data.dropped.length > 0) && (
-                <span className="text-warning text-xs">
+                <span className="text-warning inline-flex items-start gap-1 text-xs">
+                  <TriangleExclamationPoint className="mt-px size-3 shrink-0" aria-hidden="true" />
                   {data.missing.length > 0 && `Not in this result: ${data.missing.join(', ')}. `}
                   {data.dropped.length > 0 && `Left out (three series at most): ${data.dropped.join(', ')}.`}
                 </span>
@@ -201,20 +217,20 @@ export function ChartView(props: ChartViewProps) {
             </div>
             <span className="flex-1" />
             {data.series.length >= 2 && (
-              <div className="flex gap-3.5 text-xs" aria-label="Legend">
+              <div className="flex items-center gap-3.5 pt-1 text-xs" aria-label="Legend">
                 {data.series.map((s) => (
                   <span key={s.column} className="inline-flex items-center gap-1.5">
-                    <span className="h-[3px] w-3.5 rounded-sm" style={{ background: s.color }} aria-hidden="true" />
-                    {s.column}
+                    <span className="h-[3px] w-3.5 rounded-full" style={{ background: s.color }} aria-hidden="true" />
+                    <span className="font-mono">{s.column}</span>
                   </span>
                 ))}
               </div>
             )}
             <Button
               type="button"
-              variant="ghost"
-              size="sm"
-              className="h-7 text-xs underline underline-offset-[3px]"
+              variant="outline"
+              size="xs"
+              className="text-xs"
               aria-pressed={asTable}
               onClick={() => onAsTableChange(!asTable)}
             >
@@ -383,7 +399,7 @@ function ChartTooltip({
   const values = series.map((s) => point[s.dataKey]);
   const sum = values.reduce<number>((acc, v) => acc + (typeof v === 'number' ? v : 0), 0);
   return (
-    <div className="bg-card flex w-52 flex-col gap-1.5 rounded-lg border px-3 py-2.5 text-xs shadow-lg">
+    <div className="surface-overlay flex w-52 flex-col gap-1.5 rounded-lg px-3 py-2.5 text-xs">
       <b className="font-semibold">{String(point.x ?? label ?? '')}</b>
       {series.map((s, i) => (
         <span key={s.column} className="flex items-center gap-2">
@@ -432,7 +448,7 @@ function ChartTable({
   const getRowMeta = useCallback((i: number) => ({ key: String(i), label: String(i + 1), status: null }), []);
   const getCell = useCallback((r: number, c: number) => ({ value: rows[r]?.[picked[c]!] ?? null }), [rows, picked]);
   return (
-    <div className="flex h-[300px] min-h-0 flex-col rounded-md border">
+    <div className="flex h-[300px] min-h-0 flex-col overflow-hidden rounded-lg border">
       <DataGrid
         columns={gridColumns}
         rowCount={count}

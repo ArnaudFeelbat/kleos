@@ -15,17 +15,30 @@ import {
   type NodeChangeset,
   type NodeTypes,
 } from '@xyflow/react';
-import { ArrowUpRight, KeyRound, LayoutGrid, Maximize, Minus, Plus, Search } from 'lucide-react';
+import {
+  ArrowUpRight,
+  Info,
+  KeyRound,
+  LayoutGrid,
+  Maximize,
+  Minus,
+  Network,
+  Plus,
+  Search,
+  Waypoints,
+} from 'lucide-react';
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
+import { EmptyState } from '@/features/common/empty-state';
 import { useWorkspace } from '@/features/workspace/context';
 import { findRelation, selectStarSql } from '@/features/workspace/sidebar-model';
 import { TabToolbar } from '@/features/workspace/tab-toolbar';
 import { api, errorText, queryKeys } from '@/lib/api';
 import { formatInt } from '@/lib/format';
+import { cn } from '@/lib/utils';
 import { buildErGraph, NEIGHBOUR_ONLY_THRESHOLD, type ErGraph } from './er-model';
 import { layoutWithElk, placeMissing, type XY } from './layout';
 import { TableDetailPanel } from './table-detail-panel';
@@ -42,9 +55,15 @@ export function SchemaTab() {
   const { schemaModel, currentSchema } = useWorkspace();
   if (!schemaModel) {
     return (
-      <div className="flex flex-1 flex-col gap-3 p-6" aria-label="Loading schema">
-        <Skeleton className="h-40 w-56" />
-        <Skeleton className="h-28 w-56" />
+      <div className="bg-sidebar flex flex-1 flex-wrap content-start gap-8 p-10" aria-label="Loading schema">
+        {[5, 3, 4].map((rows, i) => (
+          <div key={i} className="surface-raised flex w-56 flex-col gap-2.5 rounded-[10px] p-3">
+            <Skeleton className="h-4 w-28" />
+            {Array.from({ length: rows }, (_, r) => (
+              <Skeleton key={r} className={r % 2 ? 'h-2.5 w-36' : 'h-2.5 w-44'} />
+            ))}
+          </div>
+        ))}
       </div>
     );
   }
@@ -240,14 +259,17 @@ function ErDiagram({ model, schema }: { model: SchemaModel; schema: string }) {
           </Panel>
           {limited && (
             <Panel position="top-center">
-              <p className="bg-warning-bg border-warning-line text-foreground max-w-md rounded-lg border px-3 py-2 text-xs">
-                {schema} has {formatInt(tableCount)} tables, so only the selected table and its neighbours are drawn.
-                Pick a table in the sidebar or with “Focus a table”.
+              <p className="bg-warning-bg border-warning-line text-foreground flex max-w-md items-start gap-2 rounded-lg border px-3 py-2 text-xs shadow-[var(--elev-1)]">
+                <Info className="text-warning mt-px size-3.5 shrink-0" aria-hidden="true" />
+                <span>
+                  {schema} has {formatInt(tableCount)} tables, so only the selected table and its neighbours are drawn.
+                  Pick a table in the sidebar or with “Focus a table”.
+                </span>
               </p>
             </Panel>
           )}
           <Panel position="bottom-left" className="flex items-end gap-3">
-            <div className="bg-card flex flex-col overflow-hidden rounded-lg border">
+            <div role="group" aria-label="Zoom" className="surface-raised flex flex-col overflow-hidden rounded-lg">
               <ZoomButton label="Zoom in" onClick={() => void zoomIn({ duration: 200 })}>
                 <Plus />
               </ZoomButton>
@@ -258,7 +280,7 @@ function ErDiagram({ model, schema }: { model: SchemaModel; schema: string }) {
                 <Maximize />
               </ZoomButton>
             </div>
-            <p className="text-muted-foreground mb-0.5 text-[11px]">
+            <p className="bg-background/70 text-muted-foreground mb-0.5 rounded-full px-2.5 py-1 text-[11px] backdrop-blur-sm">
               Drag a table to pin it · positions saved for {connection.nickname} / {schema}
               {graph.external.length > 0 &&
                 ` · ${graph.external.length} foreign ${graph.external.length === 1 ? 'key' : 'keys'} to other schemas not drawn`}
@@ -266,8 +288,20 @@ function ErDiagram({ model, schema }: { model: SchemaModel; schema: string }) {
           </Panel>
         </ReactFlow>
         {(empty || (limited && graph.nodes.length === 0)) && (
-          <div className="text-muted-foreground pointer-events-none absolute inset-0 flex items-center justify-center text-sm">
-            {empty ? `No tables in ${schema}.` : 'Select a table to draw it and its neighbours.'}
+          <div className="pointer-events-none absolute inset-0 flex">
+            {empty ? (
+              <EmptyState
+                icon={Network}
+                title={`No tables in ${schema}.`}
+                hint="Pick another schema in the sidebar, or create a table from the Query tab."
+              />
+            ) : (
+              <EmptyState
+                icon={Waypoints}
+                title="Select a table to draw it and its neighbours."
+                hint="Use the sidebar or “Focus a table” in the toolbar."
+              />
+            )}
           </div>
         )}
       </section>
@@ -328,9 +362,14 @@ function toFlowEdges(graph: ErGraph, selectedKey: string | null): Edge[] {
       targetHandle: e.targetHandle,
       type: 'smoothstep',
       label: e.label,
-      labelBgPadding: [4, 2] as [number, number],
-      labelBgBorderRadius: 4,
-      markerStart: { type: MarkerType.ArrowClosed, width: 14, height: 14, color: 'var(--muted-foreground)' },
+      labelBgPadding: [6, 3] as [number, number],
+      labelBgBorderRadius: 6,
+      markerStart: {
+        type: MarkerType.ArrowClosed,
+        width: 14,
+        height: 14,
+        color: active ? 'var(--brand)' : 'var(--muted-foreground)',
+      },
       className: active ? 'kleos-edge-active' : undefined,
       zIndex: active ? 1 : 0,
       ariaLabel: `From ${e.fk.table}.${e.fk.columns.join(', ')} to ${e.fk.refTable}.${e.fk.refColumns.join(', ')}`,
@@ -366,11 +405,11 @@ function ZoomButton({
   return (
     <Button
       variant="ghost"
-      size="icon"
+      size="icon-sm"
       aria-label={label}
       title={label}
       onClick={onClick}
-      className={last ? 'rounded-none' : 'rounded-none border-b'}
+      className={cn('text-muted-foreground hover:text-foreground rounded-none', !last && 'border-b')}
     >
       {children}
     </Button>
@@ -379,17 +418,19 @@ function ZoomButton({
 
 function Legend() {
   return (
-    <div className="bg-card flex items-center gap-3.5 rounded-lg border px-3 py-2 text-[11px]">
+    <div className="bg-background/80 text-muted-foreground flex items-center gap-3 rounded-full px-3 py-1 text-[11px] shadow-[0_0_0_1px_var(--edge)] backdrop-blur-sm">
       <span className="flex items-center gap-1.5">
         <KeyRound className="text-primary-key size-3" aria-hidden="true" />
         Primary key
       </span>
+      <span className="bg-border h-3 w-px" aria-hidden="true" />
       <span className="flex items-center gap-1.5">
-        <ArrowUpRight className="text-muted-foreground size-3" aria-hidden="true" />
+        <ArrowUpRight className="text-brand-text size-3" aria-hidden="true" />
         Foreign key
       </span>
+      <span className="bg-border h-3 w-px" aria-hidden="true" />
       <span>
-        <span className="font-mono">type?</span> nullable
+        <span className="text-foreground/80 font-mono">type?</span> nullable
       </span>
     </div>
   );
@@ -420,7 +461,10 @@ function FocusSearch({ model, schema, onFocus }: { model: SchemaModel; schema: s
 
   return (
     <div className="relative w-[220px]">
-      <Search className="text-muted-foreground absolute top-2 left-2.5 size-4" aria-hidden="true" />
+      <Search
+        className="text-muted-foreground absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2"
+        aria-hidden="true"
+      />
       <Input
         aria-label="Focus a table"
         placeholder="Focus a table…"

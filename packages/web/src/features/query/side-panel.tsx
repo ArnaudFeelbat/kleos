@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChartLine, Ellipsis } from 'lucide-react';
+import { Bookmark, ChartLine, CircleX, Ellipsis, History } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import type { HistoryEntry, SavedQuery } from '@kleos/shared';
@@ -20,7 +20,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Skeleton } from '@/components/ui/skeleton';
+import { Callout } from '@/features/common/callout';
+import { EmptyState } from '@/features/common/empty-state';
+import { SkeletonList } from '@/features/common/skeletons';
+import { segmentedItem, segmentedList } from '@/features/common/styles';
 import { api, errorText, queryKeys } from '@/lib/api';
 import { formatClock, formatInt, formatMs } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -51,8 +54,8 @@ export function SidePanel(props: SidePanelProps) {
       aria-label="History and saved queries"
       className="bg-background flex min-h-0 w-[280px] shrink-0 flex-col border-l"
     >
-      <div className="border-b px-3 py-2.5">
-        <div role="tablist" aria-label="History or saved" className="bg-muted flex gap-0.5 rounded-lg p-[3px]">
+      <div className="flex min-h-11 items-center border-b px-3 py-1.5">
+        <div role="tablist" aria-label="History or saved" className={cn(segmentedList, 'flex w-full')}>
           {(['history', 'saved'] as const).map((t) => (
             <button
               key={t}
@@ -60,14 +63,12 @@ export function SidePanel(props: SidePanelProps) {
               role="tab"
               aria-selected={tab === t}
               onClick={() => setTab(t)}
-              className={cn(
-                'text-muted-foreground inline-flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md font-medium',
-                tab === t && 'bg-background text-foreground shadow-sm',
-              )}
+              className={cn(segmentedItem, 'flex-1')}
             >
+              {t === 'history' ? <History aria-hidden="true" /> : <Bookmark aria-hidden="true" />}
               {t === 'history' ? 'History' : 'Saved'}
               {t === 'saved' && saved.data && (
-                <span className="text-muted-foreground font-mono text-[11px]">{saved.data.length}</span>
+                <span className="text-muted-foreground font-mono text-[11px] font-normal">{saved.data.length}</span>
               )}
             </button>
           ))}
@@ -88,15 +89,19 @@ function HistoryList({ connectionId, connectionName, onLoadHistory }: SidePanelP
     <>
       <div className="min-h-0 flex-1 overflow-auto">
         {history.isPending && <ListSkeleton />}
-        {history.isError && <p className="text-destructive p-3 text-xs">{errorText(history.error)}</p>}
+        {history.isError && (
+          <Callout tone="error" title="Couldn’t load the history" className="m-3 px-3 py-2.5">
+            <span className="text-xs break-words">{errorText(history.error)}</span>
+          </Callout>
+        )}
         {history.data?.length === 0 && (
-          <p className="text-muted-foreground p-3 text-xs">Runs appear here as you execute statements.</p>
+          <EmptyState size="sm" icon={History} title="No runs yet" hint="Runs appear here as you execute statements." />
         )}
         {history.data?.map((h) => (
           <button
             key={h.id}
             type="button"
-            className="hover:bg-accent flex w-full flex-col gap-1 border-b px-3 py-2.5 text-left"
+            className="group hover:bg-foreground/[0.03] focus-visible:bg-brand-soft flex w-full flex-col gap-1 border-b px-3 py-2.5 text-left outline-none dark:hover:bg-white/[0.03]"
             title="Load into the current tab"
             onClick={() => onLoadHistory(h)}
           >
@@ -104,7 +109,8 @@ function HistoryList({ connectionId, connectionName, onLoadHistory }: SidePanelP
               <span className="font-mono">{formatClock(h.ranAt, false)}</span>
               {h.error ? (
                 <>
-                  <span className="text-destructive inline-flex h-[18px] items-center rounded-full border border-current px-1.5 font-mono font-medium">
+                  <span className="bg-error-bg text-foreground inline-flex h-[18px] items-center gap-1 rounded-[5px] px-1.5 font-mono text-[10.5px] font-semibold shadow-[inset_0_0_0_1px_var(--error-line)]">
+                    <CircleX className="text-destructive size-2.5" aria-hidden="true" />
                     {h.error.split(' ')[0]}
                   </span>
                   <span className="truncate">{h.error.split(' ').slice(1).join(' ')}</span>
@@ -123,11 +129,13 @@ function HistoryList({ connectionId, connectionName, onLoadHistory }: SidePanelP
                 </>
               )}
             </span>
-            <span className="truncate font-mono text-xs">{h.sql.replace(/\s+/g, ' ').trim()}</span>
+            <span className="text-foreground/85 group-hover:text-foreground truncate font-mono text-xs">
+              {h.sql.replace(/\s+/g, ' ').trim()}
+            </span>
           </button>
         ))}
       </div>
-      <p className="text-muted-foreground m-0 border-t px-3 py-2.5 text-[11px]">
+      <p className="bg-sidebar/60 text-muted-foreground m-0 border-t px-3 py-2.5 text-[11px]">
         Keeps the latest 1,000 runs for {connectionName}.
       </p>
     </>
@@ -172,16 +180,28 @@ function SavedList({
     <>
       <div className="min-h-0 flex-1 overflow-auto">
         {loading && <ListSkeleton />}
-        {error && <p className="text-destructive p-3 text-xs">{errorText(error)}</p>}
+        {error && (
+          <Callout tone="error" title="Couldn’t load saved queries" className="m-3 px-3 py-2.5">
+            <span className="text-xs break-words">{errorText(error)}</span>
+          </Callout>
+        )}
         {items?.length === 0 && (
-          <p className="text-muted-foreground p-3 text-xs">
-            Save a query with “Save…” to reopen it here with its chart.
-          </p>
+          <EmptyState
+            size="sm"
+            icon={Bookmark}
+            title="No saved queries"
+            hint="Save a query with “Save…” to reopen it here with its chart."
+          />
         )}
         {items?.map((q) => (
           <div
             key={q.id}
-            className={cn('group hover:bg-accent flex items-start border-b', q.id === activeSavedId && 'bg-muted')}
+            className={cn(
+              'group flex items-start border-b',
+              q.id === activeSavedId
+                ? 'bg-brand-soft shadow-[inset_2px_0_0_var(--brand)]'
+                : 'hover:bg-foreground/[0.03] dark:hover:bg-white/[0.03]',
+            )}
           >
             <button
               type="button"
@@ -189,7 +209,9 @@ function SavedList({
               onClick={() => onOpenSaved(q)}
             >
               <b className="flex items-center gap-1.5 truncate font-semibold">
-                {q.chart && <ChartLine className="size-3.5 shrink-0" role="img" aria-label="Has chart" />}
+                {q.chart && (
+                  <ChartLine className="text-brand-text size-3.5 shrink-0" role="img" aria-label="Has chart" />
+                )}
                 {q.name}
               </b>
               <span className="text-muted-foreground truncate text-xs">
@@ -227,7 +249,7 @@ function SavedList({
           </div>
         ))}
       </div>
-      <p className="text-muted-foreground m-0 border-t px-3 py-2.5 text-[11px]">
+      <p className="bg-sidebar/60 text-muted-foreground m-0 border-t px-3 py-2.5 text-[11px]">
         Charts draw from loaded rows only, up to 5,000.
       </p>
       <NameDialog
@@ -261,11 +283,5 @@ function SavedList({
 }
 
 function ListSkeleton() {
-  return (
-    <div className="flex flex-col gap-2 p-3" aria-busy="true">
-      {Array.from({ length: 5 }, (_, i) => (
-        <Skeleton key={i} className="h-10 w-full" />
-      ))}
-    </div>
-  );
+  return <SkeletonList rows={5} rowClassName="h-10 w-full" className="p-3" />;
 }

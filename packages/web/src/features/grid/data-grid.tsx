@@ -321,8 +321,8 @@ export function DataGrid(props: DataGridProps) {
           aria-multiselectable="true"
           aria-activedescendant={editing ? undefined : activeId}
           className={cn(
-            'relative min-h-0 min-w-0 flex-1 overflow-auto text-xs outline-none',
-            'focus-visible:ring-ring/50 focus-visible:ring-2 focus-visible:ring-inset',
+            'relative min-h-0 min-w-0 flex-1 overflow-auto text-xs outline-none [container-type:inline-size]',
+            'focus-visible:ring-ring/35 focus-visible:ring-2 focus-visible:ring-inset',
             className,
           )}
           onKeyDown={onKeyDown}
@@ -343,7 +343,7 @@ export function DataGrid(props: DataGridProps) {
               <div
                 role="columnheader"
                 aria-colindex={1}
-                className="bg-sidebar text-muted-foreground sticky left-0 z-[3] flex items-center justify-end border-r border-b px-2.5 font-mono text-[11px]"
+                className="bg-sidebar text-muted-foreground sticky left-0 z-[3] flex items-center justify-end border-r border-b px-2.5 font-mono text-[11px] shadow-[0_1px_0_var(--border)]"
                 style={{ width: gutter, minWidth: gutter }}
               >
                 #
@@ -361,9 +361,11 @@ export function DataGrid(props: DataGridProps) {
                           aria-label="Primary key"
                         />
                       )}
-                      <span className="truncate font-semibold">{col.name}</span>
+                      <span className="text-foreground truncate text-[12px] font-semibold tracking-[-0.005em]">
+                        {col.name}
+                      </span>
                       {col.sort && (
-                        <span className="text-foreground inline-flex shrink-0 items-center">
+                        <span className="text-brand-text inline-flex shrink-0 items-center">
                           {col.sort.dir === 'asc' ? (
                             <ArrowUp className="size-3" role="img" aria-label="Sorted ascending" />
                           ) : (
@@ -373,7 +375,7 @@ export function DataGrid(props: DataGridProps) {
                         </span>
                       )}
                     </span>
-                    <span className="text-muted-foreground block truncate font-mono text-[10.5px] font-normal">
+                    <span className="text-muted-foreground block truncate font-mono text-[10.5px] leading-4 font-normal">
                       {col.typeLabel}
                     </span>
                   </>
@@ -396,7 +398,7 @@ export function DataGrid(props: DataGridProps) {
                         tabIndex={-1}
                         title={headerClickHint}
                         className={cn(
-                          'hover:bg-accent/60 flex h-full w-full min-w-0 flex-col justify-center px-2.5 text-left',
+                          'hover:bg-foreground/[0.04] dark:hover:bg-white/[0.04] flex h-full w-full min-w-0 flex-col justify-center px-2.5 text-left',
                           isRightAligned(col.kind) && 'items-end text-right',
                         )}
                         onClick={(e) => onHeaderClick(vc.index, { shiftKey: e.shiftKey })}
@@ -410,7 +412,7 @@ export function DataGrid(props: DataGridProps) {
                       role="separator"
                       aria-orientation="vertical"
                       aria-label={`Resize ${col.name}`}
-                      className="hover:bg-ring/30 absolute top-0 -right-1 z-[1] h-full w-2 cursor-col-resize"
+                      className="after:bg-brand absolute top-0 -right-1 z-[1] h-full w-2 cursor-col-resize after:absolute after:inset-y-1.5 after:left-[3px] after:w-0.5 after:rounded-full after:opacity-0 after:transition-opacity hover:after:opacity-70"
                       onPointerDown={(e) => startResize(e, col.key, vc.size)}
                       onPointerMove={moveResize}
                       onPointerUp={endResize}
@@ -426,7 +428,7 @@ export function DataGrid(props: DataGridProps) {
             </div>
 
             {rowCount === 0 && emptyState && (
-              <div className="text-muted-foreground sticky left-0 p-6 text-sm" style={{ width: 'min(100%, 640px)' }}>
+              <div className="text-muted-foreground sticky left-0 flex w-[100cqw] justify-center px-6 py-10 text-[13px]">
                 {emptyState}
               </div>
             )}
@@ -441,7 +443,8 @@ export function DataGrid(props: DataGridProps) {
                   aria-rowindex={vr.index + 2}
                   aria-selected={selection?.rows ? rowSelected : undefined}
                   className={cn(
-                    'absolute left-0 flex',
+                    'group/row absolute left-0 flex',
+                    !meta.status && 'hover:bg-foreground/[0.025] dark:hover:bg-white/[0.03]',
                     meta.status === 'insert' && 'bg-staged-insert text-staged-insert-foreground',
                     meta.status === 'delete' && 'bg-staged-delete text-staged-delete-foreground',
                   )}
@@ -452,8 +455,10 @@ export function DataGrid(props: DataGridProps) {
                     data-row={vr.index}
                     aria-colindex={1}
                     className={cn(
-                      'text-muted-foreground sticky left-0 z-[1] flex items-center justify-end gap-1 border-r border-b px-2.5 font-mono text-[11px]',
-                      rowSelected && selection?.rows ? 'bg-accent text-foreground' : 'bg-sidebar',
+                      'text-muted-foreground group-hover/row:text-foreground sticky left-0 z-[1] flex items-center justify-end gap-1 border-r border-b px-2.5 font-mono text-[11px]',
+                      rowSelected && selection?.rows
+                        ? 'bg-sidebar text-brand-text group-hover/row:text-brand-text font-medium shadow-[inset_0_0_0_999px_var(--brand-soft),inset_-2px_0_0_var(--brand)]'
+                        : 'bg-sidebar',
                       meta.status === 'insert' && 'bg-staged-insert text-staged-insert-foreground',
                       meta.status === 'delete' && 'bg-staged-delete text-staged-delete-foreground',
                       meta.status === 'update' && 'text-staged-update-foreground',
@@ -485,7 +490,8 @@ export function DataGrid(props: DataGridProps) {
                           'absolute top-0 flex h-full items-center gap-1 overflow-hidden border-r border-b px-2.5 whitespace-nowrap',
                           right && 'justify-end',
                           isMonospace(col.kind) && 'font-mono',
-                          selected && !isFocus && 'bg-accent',
+                          selected && !isFocus && 'bg-brand-soft',
+                          isFocus && 'bg-[color-mix(in_srgb,var(--brand)_6%,transparent)]',
                           cell.changed &&
                             'bg-staged-update text-staged-update-foreground shadow-[inset_3px_0_0_var(--staged-update-line)]',
                           meta.status === 'delete' && 'line-through',
@@ -503,7 +509,7 @@ export function DataGrid(props: DataGridProps) {
                           <button
                             type="button"
                             tabIndex={-1}
-                            className="text-muted-foreground hover:text-foreground inline-flex shrink-0 rounded-sm"
+                            className="text-muted-foreground/80 hover:text-brand-text hover:bg-brand-soft inline-flex size-4 shrink-0 items-center justify-center rounded-[4px]"
                             aria-label={cell.link.label}
                             title={cell.link.label}
                             onClick={cell.link.onOpen}
@@ -514,7 +520,7 @@ export function DataGrid(props: DataGridProps) {
                         {isFocus && (
                           <span
                             aria-hidden="true"
-                            className="ring-ring pointer-events-none absolute inset-0 ring-2 ring-inset"
+                            className="ring-brand pointer-events-none absolute inset-0 rounded-[2px] ring-2 ring-inset"
                           />
                         )}
                         {cell.error && (

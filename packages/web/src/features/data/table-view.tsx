@@ -1,5 +1,20 @@
 import { useMutation, useQuery, useQueryClient, type Query } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight, Lock, PanelRight, Plus, RefreshCw, Trash, Undo2 } from 'lucide-react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  CircleX,
+  Eye,
+  FunnelX,
+  LoaderCircle,
+  Lock,
+  PanelRight,
+  Plus,
+  RefreshCw,
+  Rows3,
+  Table2,
+  Trash,
+  Undo2,
+} from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import {
@@ -16,10 +31,12 @@ import {
 } from '@kleos/shared';
 import { Button } from '@/components/ui/button';
 import { ContextMenuItem } from '@/components/ui/context-menu';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { CellEditor, type EditAdvance, type EditResult } from '@/features/cells/cell-editor';
 import { classifyType, typeLabel, type CellKind } from '@/features/cells/classify';
+import { Callout } from '@/features/common/callout';
+import { EmptyState } from '@/features/common/empty-state';
+import { GridSkeleton } from '@/features/common/skeletons';
 import { DataGrid } from '@/features/grid/data-grid';
 import { selectedRows, tabSelection } from '@/features/grid/selection';
 import type { CellPos, GridCell, GridColumn, GridRowMeta, GridSelection } from '@/features/grid/types';
@@ -558,15 +575,25 @@ export function TableView({ sid, table, info, schemaModel, readOnly, active, ope
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div className="flex flex-wrap items-center gap-3 border-b px-4 py-2.5">
-        <div className="flex items-center gap-1.5 text-[13px]">
+      <div className="flex min-h-12 flex-wrap items-center gap-2 border-b px-4 py-2">
+        <div className="flex min-w-0 items-center gap-2 text-[13px]">
+          <span className="bg-brand-soft text-brand-text flex size-6 shrink-0 items-center justify-center rounded-md">
+            {info?.kind === 'view' || info?.kind === 'materialized' ? (
+              <Eye className="size-3.5" aria-hidden="true" />
+            ) : (
+              <Table2 className="size-3.5" aria-hidden="true" />
+            )}
+          </span>
           <span className="text-muted-foreground">{table.schema}</span>
-          <span className="text-muted-foreground">/</span>
-          <b className="font-semibold">{table.name}</b>
+          <ChevronRight className="text-muted-foreground/60 -mx-1 size-3.5 shrink-0" aria-hidden="true" />
+          <b className="truncate font-semibold tracking-[-0.01em]">{table.name}</b>
         </div>
         {blockReason && (
-          <span className="text-muted-foreground inline-flex items-center gap-1.5 text-xs" role="note">
-            <Lock className="size-3.5" aria-hidden="true" />
+          <span
+            className="bg-muted/70 text-muted-foreground ml-1 inline-flex h-6 items-center gap-1.5 rounded-full px-2.5 text-xs shadow-[inset_0_0_0_1px_var(--edge)]"
+            role="note"
+          >
+            <Lock className="size-3" aria-hidden="true" />
             {blockReason}
           </span>
         )}
@@ -633,23 +660,15 @@ export function TableView({ sid, table, info, schemaModel, readOnly, active, ope
       <div className="flex min-h-0 flex-1">
         {failed ? (
           <div className="flex-1 p-4">
-            <div
-              role="alert"
-              className="bg-error-bg border-error-line flex flex-col gap-1 rounded-lg border px-3.5 py-3"
-            >
-              <b className="font-semibold">Couldn’t load rows</b>
-              <span className="font-mono text-xs">{errorText(rowsQuery.error)}</span>
+            <Callout role="alert" tone="error" title="Couldn’t load rows">
+              <span className="font-mono text-xs break-words">{errorText(rowsQuery.error)}</span>
               {rowsQuery.error instanceof ApiError && rowsQuery.error.body.hint && (
                 <span className="text-muted-foreground text-xs">Hint: {rowsQuery.error.body.hint}</span>
               )}
-            </div>
+            </Callout>
           </div>
         ) : loading && columns.length === 0 ? (
-          <div className="flex flex-1 flex-col gap-2 p-4" aria-busy="true" aria-label="Loading rows">
-            {Array.from({ length: 8 }, (_, i) => (
-              <Skeleton key={i} className="h-6 w-full" />
-            ))}
-          </div>
+          <GridSkeleton label="Loading rows" />
         ) : (
           <DataGrid
             columns={gridColumns}
@@ -672,11 +691,26 @@ export function TableView({ sid, table, info, schemaModel, readOnly, active, ope
             contextMenuExtra={contextMenuExtra}
             className={rowsQuery.isPlaceholderData ? 'opacity-60' : undefined}
             emptyState={
-              loading
-                ? 'Loading rows…'
-                : view.chips.length > 0 || where
-                  ? 'No rows match these filters.'
-                  : 'This table is empty.'
+              loading ? (
+                <span className="inline-flex items-center gap-2 text-xs">
+                  <LoaderCircle className="size-3.5 animate-spin" aria-hidden="true" />
+                  Loading rows…
+                </span>
+              ) : view.chips.length > 0 || where ? (
+                <EmptyState
+                  icon={FunnelX}
+                  title="No rows match these filters."
+                  hint="Remove a filter chip or change the WHERE condition."
+                  className="p-2"
+                />
+              ) : (
+                <EmptyState
+                  icon={Rows3}
+                  title="This table is empty."
+                  hint={canEditTable ? `Add row stages an INSERT; ${isMac ? '⌘S' : 'Ctrl+S'} commits it.` : undefined}
+                  className="p-2"
+                />
+              )
             }
           />
         )}
@@ -698,13 +732,17 @@ export function TableView({ sid, table, info, schemaModel, readOnly, active, ope
         />
       )}
 
-      <footer className="flex flex-wrap items-center gap-3 border-t px-4 py-2 text-xs">
-        <span>
-          Rows {groupDigits(String(firstRow))}–{groupDigits(String(lastRow))}
+      <footer className="bg-sidebar/60 flex min-h-10 flex-wrap items-center gap-3 border-t px-4 py-1.5 text-xs">
+        <span className="tabular">
+          <span className="text-muted-foreground">Rows</span>{' '}
+          <span className="font-mono font-medium">
+            {groupDigits(String(firstRow))}–{groupDigits(String(lastRow))}
+          </span>
           {total && !total.startsWith('-') ? (
             <>
               {' '}
-              of <span className="font-mono">
+              <span className="text-muted-foreground">of</span>{' '}
+              <span className="font-mono font-medium">
                 {exactCount ? groupDigits(exactCount) : `~${groupDigits(total)}`}
               </span>{' '}
               <span className="text-muted-foreground">{exactCount ? '(exact)' : '(planner estimate)'}</span>
@@ -716,18 +754,24 @@ export function TableView({ sid, table, info, schemaModel, readOnly, active, ope
         {!exactCount && (
           <Button
             type="button"
-            variant="ghost"
-            size="sm"
-            className="h-7 px-1 underline underline-offset-[3px]"
+            variant="link"
+            size="xs"
+            className="h-6 px-1 text-xs"
             disabled={exact.isFetching}
             onClick={() => setExactFor(countKey)}
           >
+            {exact.isFetching && <LoaderCircle className="animate-spin" aria-hidden="true" />}
             {exact.isFetching ? 'Counting…' : 'Count exactly'}
           </Button>
         )}
-        {exact.isError && exactFor === countKey && <span className="text-destructive">{errorText(exact.error)}</span>}
+        {exact.isError && exactFor === countKey && (
+          <span className="text-destructive inline-flex items-center gap-1">
+            <CircleX className="size-3.5" aria-hidden="true" />
+            {errorText(exact.error)}
+          </span>
+        )}
         <span className="flex-1" />
-        <span className="text-muted-foreground">{PAGE_SIZE} per page</span>
+        <span className="text-muted-foreground tabular">{PAGE_SIZE} per page</span>
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -744,7 +788,10 @@ export function TableView({ sid, table, info, schemaModel, readOnly, active, ope
           </TooltipTrigger>
           <TooltipContent>Previous page</TooltipContent>
         </Tooltip>
-        <span className="font-mono" aria-label={`Page ${view.page + 1}${totalPages ? ` of ${totalPages}` : ''}`}>
+        <span
+          className="bg-background min-w-14 rounded-md px-2 py-1 text-center font-mono shadow-[inset_0_0_0_1px_var(--edge)]"
+          aria-label={`Page ${view.page + 1}${totalPages ? ` of ${totalPages}` : ''}`}
+        >
           {groupDigits(String(view.page + 1))}
           {totalPages ? ` / ${groupDigits(totalPages)}` : ''}
         </span>

@@ -1,5 +1,7 @@
-import { CircleExclamationPoint, LoaderCircle, Minus, Pencil, Plus } from 'lucide-react';
+import { CircleExclamationPoint, Code, LoaderCircle, Minus, Pencil, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Callout } from '@/features/common/callout';
+import { kbdOnPrimary } from '@/features/common/styles';
 import { cn } from '@/lib/utils';
 import { tokenizeSql } from './pending-sql';
 import type { StageError } from './staging';
@@ -17,6 +19,9 @@ type PendingPanelProps = {
   onCommit(): void;
 };
 
+const badge =
+  'inline-flex h-5 items-center gap-1 rounded-full px-2 text-[11px] font-medium tabular shadow-[inset_0_0_0_1px_color-mix(in_srgb,currentColor_22%,transparent)]';
+
 const numberWords = ['zero', 'one', 'both', 'all three', 'all four', 'all five', 'all six', 'all seven', 'all eight'];
 
 /** Review panel: counts by kind, the SQL that will run, Discard and Commit (⌘S). */
@@ -31,28 +36,32 @@ export function PendingPanel({
 }: PendingPanelProps) {
   const all = numberWords[counts.total] ?? `all ${counts.total}`;
   return (
-    <section aria-label="Pending changes" className="bg-sidebar max-h-[40%] shrink-0 overflow-auto border-t">
-      <div className="flex flex-wrap items-center gap-3 px-4 py-2.5">
-        <b className="font-semibold">Pending changes</b>
+    <section
+      aria-label="Pending changes"
+      className="bg-sidebar animate-in fade-in-0 slide-in-from-bottom-2 max-h-[40%] shrink-0 overflow-auto border-t shadow-[0_-6px_16px_-10px_rgb(15_15_30/0.18)] duration-200 dark:shadow-[0_-8px_20px_-10px_rgb(0_0_0/0.6)]"
+    >
+      <div className="flex flex-wrap items-center gap-2.5 px-4 py-2.5">
+        <span className="bg-staged-update-line size-2 rounded-full" aria-hidden="true" />
+        <b className="font-semibold tracking-[-0.01em]">Pending changes</b>
         {counts.updated > 0 && (
-          <span className="bg-staged-update text-staged-update-foreground inline-flex h-5 items-center gap-1 rounded-full px-2 text-[11px] font-medium">
+          <span className={cn(badge, 'bg-staged-update text-staged-update-foreground')}>
             <Pencil className="size-2.5" aria-hidden="true" />
             {counts.updated} updated
           </span>
         )}
         {counts.inserted > 0 && (
-          <span className="bg-staged-insert text-staged-insert-foreground inline-flex h-5 items-center gap-1 rounded-full px-2 text-[11px] font-medium">
+          <span className={cn(badge, 'bg-staged-insert text-staged-insert-foreground')}>
             <Plus className="size-2.5" aria-hidden="true" />
             {counts.inserted} inserted
           </span>
         )}
         {counts.deleted > 0 && (
-          <span className="bg-staged-delete text-staged-delete-foreground inline-flex h-5 items-center gap-1 rounded-full px-2 text-[11px] font-medium">
+          <span className={cn(badge, 'bg-staged-delete text-staged-delete-foreground')}>
             <Minus className="size-2.5" aria-hidden="true" />
             {counts.deleted} deleted
           </span>
         )}
-        <span className="text-muted-foreground text-xs">
+        <span className="text-muted-foreground ml-1 text-xs">
           Applied in one transaction — any failing statement rolls back {counts.total === 1 ? 'it' : all}.
         </span>
         <span className="flex-1" />
@@ -62,31 +71,32 @@ export function PendingPanel({
         <Button type="button" size="sm" onClick={onCommit} disabled={committing || counts.total === 0}>
           {committing && <LoaderCircle className="animate-spin" aria-hidden="true" />}
           Commit {counts.total} change{counts.total === 1 ? '' : 's'}
-          <kbd className="rounded border border-current/40 px-1 font-mono text-[11px] font-medium">
-            {isMac ? '⌘S' : 'Ctrl+S'}
-          </kbd>
+          <kbd className={kbdOnPrimary}>{isMac ? '⌘S' : 'Ctrl+S'}</kbd>
         </Button>
       </div>
       {error && (
-        <div
+        <Callout
           role="alert"
-          className="bg-error-bg border-error-line mx-4 mb-3 flex items-start gap-2.5 rounded-lg border px-3.5 py-3"
+          tone="error"
+          icon={CircleExclamationPoint}
+          title="Commit failed — nothing was saved"
+          className="mx-4 mb-3"
         >
-          <CircleExclamationPoint className="text-destructive mt-0.5 size-4 shrink-0" aria-hidden="true" />
-          <div className="flex flex-col gap-0.5">
-            <b className="font-semibold">Commit failed — nothing was saved</b>
-            <span className="text-xs">
-              {errorLocation && <span className="font-mono">{errorLocation}: </span>}
-              <span className="font-mono">{error.code}</span> {error.message}. The whole batch was rolled back; your{' '}
-              {counts.total} edit{counts.total === 1 ? ' is' : 's are'} still staged.
-            </span>
-            {error.detail && <span className="text-muted-foreground text-xs">{error.detail}</span>}
-            {error.hint && <span className="text-muted-foreground text-xs">Hint: {error.hint}</span>}
-          </div>
-        </div>
+          <span className="text-xs">
+            {errorLocation && <span className="font-mono">{errorLocation}: </span>}
+            <span className="font-mono">{error.code}</span> {error.message}. The whole batch was rolled back; your{' '}
+            {counts.total} edit{counts.total === 1 ? ' is' : 's are'} still staged.
+          </span>
+          {error.detail && <span className="text-muted-foreground text-xs">{error.detail}</span>}
+          {error.hint && <span className="text-muted-foreground text-xs">Hint: {error.hint}</span>}
+        </Callout>
       )}
+      <div className="text-muted-foreground mx-4 mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold tracking-[0.06em] uppercase">
+        <Code className="size-3" aria-hidden="true" />
+        SQL
+      </div>
       <pre
-        className="bg-background selectable mx-4 mb-3 overflow-x-auto rounded-lg border px-3.5 py-3 font-mono text-xs leading-[1.7]"
+        className="bg-background selectable mx-4 mb-3 overflow-x-auto rounded-lg px-3.5 py-3 font-mono text-xs leading-[1.7] shadow-[0_0_0_1px_var(--edge),var(--elev-1)]"
         aria-label="SQL that will run"
       >
         {tokenizeSql(sql).map((t, i) => (

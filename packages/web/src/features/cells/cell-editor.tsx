@@ -1,6 +1,8 @@
+import { CircleX } from 'lucide-react';
 import { useId, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type { CellValue } from '@kleos/shared';
 import { Button } from '@/components/ui/button';
+import { kbdOnPrimary } from '@/features/common/styles';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
@@ -109,7 +111,10 @@ export function CellEditor({ column, value, isInsert, onSubmit, onCancel, onReve
               variant="outline"
               size="sm"
               autoFocus={checked || (current === undefined && i === 0)}
-              className={cn('h-7 px-2.5 text-xs', checked && 'ring-ring ring-2')}
+              className={cn(
+                'h-7 px-2.5 text-xs',
+                checked && 'bg-brand-soft text-brand-text ring-brand dark:bg-brand-soft ring-[1.5px] font-semibold',
+              )}
               disabled={o.result === null && !column.nullable}
               onClick={() => onSubmit({ type: 'value', value: o.result }, 0)}
               onKeyDown={(e) => {
@@ -192,18 +197,19 @@ export function CellEditor({ column, value, isInsert, onSubmit, onCancel, onReve
 
   return (
     <div
-      className="bg-popover text-popover-foreground flex w-full flex-col gap-2 rounded-md border p-2 shadow-lg"
+      className="surface-overlay text-popover-foreground animate-in fade-in-0 zoom-in-[0.98] flex w-full flex-col gap-2 rounded-lg p-2.5 duration-150"
       role="group"
       aria-label={`Edit ${column.name}`}
     >
-      <div className="flex items-baseline gap-2 text-xs">
-        <span className="font-mono font-medium">{column.name}</span>
+      <div className="flex items-baseline gap-2 px-0.5 text-xs">
+        <span className="font-mono font-semibold">{column.name}</span>
         <span className="text-muted-foreground font-mono text-[10.5px]">{column.typeLabel}</span>
         {kind === 'timestamptz' && <span className="text-muted-foreground ml-auto text-[11px]">Offset required</span>}
       </div>
       {field}
       {shownError && (
-        <p id={errorId} className="text-destructive text-xs">
+        <p id={errorId} className="text-destructive flex items-start gap-1 text-xs">
+          <CircleX className="mt-px size-3 shrink-0" aria-hidden="true" />
           {shownError}
         </p>
       )}
@@ -221,7 +227,7 @@ export function CellEditor({ column, value, isInsert, onSubmit, onCancel, onReve
           Format JSON
         </Button>
       )}
-      <div className="flex flex-wrap items-center gap-1">
+      <div className="-mx-2.5 -mb-2.5 flex flex-wrap items-center gap-1 rounded-b-lg border-t px-2.5 py-2">
         {kind !== 'bytea' && (
           <Button
             type="button"
@@ -251,7 +257,7 @@ export function CellEditor({ column, value, isInsert, onSubmit, onCancel, onReve
         {usesSave && (
           <Button type="button" size="xs" onClick={() => submitText(0)} title={multiline ? modEnter : '↵'}>
             Stage
-            <kbd className="font-mono text-[10px] opacity-70">{multiline ? modEnter : '↵'}</kbd>
+            <kbd className={kbdOnPrimary}>{multiline ? modEnter : '↵'}</kbd>
           </Button>
         )}
       </div>

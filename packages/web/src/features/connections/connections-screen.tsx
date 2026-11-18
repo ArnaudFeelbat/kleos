@@ -39,7 +39,7 @@ export function ConnectionsScreen() {
         }}
         onNew={() => setSelection({ kind: 'new' })}
       />
-      <main className="bg-background flex min-w-0 flex-1 items-start justify-center overflow-y-auto rounded-tl-[10px] px-6 py-12 shadow-[0_0_0_1px_var(--edge),var(--elev-1)]">
+      <main className="bg-sidebar dark:bg-background flex min-w-0 flex-1 items-start justify-center overflow-y-auto rounded-tl-[10px] px-6 py-12 shadow-[0_0_0_1px_var(--edge),var(--elev-1)]">
         {favorites.isPending || waitingForList ? null : (
           <ConnectionForm
             key={saved?.id ?? 'new'}

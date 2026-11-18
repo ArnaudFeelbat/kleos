@@ -1,7 +1,9 @@
-import { ChevronDown, Clock, Copy, LoaderCircle } from 'lucide-react';
+import { ChevronDown, CircleSlash, Copy, Flame, ListTree, LoaderCircle } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/features/common/empty-state';
+import { kbdNeutral } from '@/features/common/styles';
 import { copyText } from '@/features/grid/copy';
 import { formatInt, formatMs } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -26,25 +28,28 @@ export function ExplainView({
 
   if (!explain) {
     return (
-      <p className="text-muted-foreground flex flex-1 items-center justify-center p-8 text-xs">
-        Explain ({isMac ? '⌘E' : 'Ctrl+E'}) runs EXPLAIN (ANALYZE, FORMAT JSON) on the selection or the statement under
-        the cursor.
-      </p>
+      <EmptyState
+        icon={ListTree}
+        title="No plan yet"
+        hint={
+          <>
+            Explain (<kbd className={kbdNeutral}>{isMac ? '⌘E' : 'Ctrl+E'}</kbd>) runs EXPLAIN (ANALYZE, FORMAT JSON) on
+            the selection or the statement under the cursor.
+          </>
+        }
+      />
     );
   }
   if (explain.status === 'running') {
     return (
       <p className="text-muted-foreground flex flex-1 items-center justify-center gap-2 p-8 text-xs">
-        <LoaderCircle className="size-4 animate-spin" aria-hidden="true" /> Running the statement under EXPLAIN ANALYZE…
+        <LoaderCircle className="text-brand-text size-4 animate-spin" aria-hidden="true" /> Running the statement under
+        EXPLAIN ANALYZE…
       </p>
     );
   }
   if (explain.status === 'cancelled') {
-    return (
-      <p className="text-muted-foreground flex flex-1 items-center justify-center p-8 text-xs">
-        Explain cancelled after {formatMs(explain.elapsedMs ?? 0)}.
-      </p>
-    );
+    return <EmptyState icon={CircleSlash} title={`Explain cancelled after ${formatMs(explain.elapsedMs ?? 0)}.`} />;
   }
   if (explain.status === 'error' && explain.error)
     return <QueryErrorPanel error={explain.error} location={errorLocation} />;
@@ -60,12 +65,12 @@ export function ExplainView({
       <div className="min-h-0 min-w-0 flex-1 overflow-auto">
         <table className="w-full border-separate border-spacing-0 text-[12.5px]">
           <thead>
-            <tr className="text-muted-foreground text-xs">
-              <th className="bg-sidebar sticky top-0 h-9 border-b px-3 text-left font-medium">Node</th>
-              <th className="bg-sidebar sticky top-0 h-9 border-b px-3 text-right font-medium">Rows · actual / est.</th>
-              <th className="bg-sidebar sticky top-0 h-9 border-b px-3 text-right font-medium">Loops</th>
-              <th className="bg-sidebar sticky top-0 h-9 w-[220px] border-b px-3 text-left font-medium">Self time</th>
-              <th className="bg-sidebar sticky top-0 h-9 border-b px-3 text-right font-medium">Total</th>
+            <tr className="text-muted-foreground text-[11.5px] [&>th]:bg-sidebar [&>th]:sticky [&>th]:top-0 [&>th]:z-[1] [&>th]:h-9 [&>th]:border-b [&>th]:px-3 [&>th]:font-medium [&>th]:whitespace-nowrap">
+              <th className="text-left">Node</th>
+              <th className="text-right">Rows · actual / est.</th>
+              <th className="text-right">Loops</th>
+              <th className="w-[220px] text-left">Self time</th>
+              <th className="text-right">Total</th>
             </tr>
           </thead>
           <tbody>
@@ -81,12 +86,24 @@ export function ExplainView({
       {selected && (
         <aside
           aria-label="Node details"
-          className="bg-background flex w-[300px] shrink-0 flex-col gap-1 overflow-auto border-l p-4"
+          className="bg-background flex w-[300px] shrink-0 flex-col gap-0 overflow-auto border-l p-4"
         >
-          <h2 className="m-0 text-[15px] font-semibold">{selected.node['Node Type']}</h2>
+          <h2 className="m-0 text-[15px] font-semibold tracking-[-0.012em]">{selected.node['Node Type']}</h2>
           {nodeTarget(selected.node) && (
-            <span className="text-muted-foreground mb-2.5 font-mono text-xs">{nodeTarget(selected.node)}</span>
+            <span className="text-muted-foreground mt-0.5 font-mono text-xs">{nodeTarget(selected.node)}</span>
           )}
+          <div className="mt-3 mb-2 flex flex-col gap-1.5">
+            <div className="flex items-baseline justify-between text-xs">
+              <span className="text-muted-foreground">Share of execution</span>
+              <span className="font-mono font-semibold">{(selected.share * 100).toFixed(1)}%</span>
+            </div>
+            <div className="bg-chart-track h-1.5 overflow-hidden rounded-full" aria-hidden="true">
+              <span
+                className="bg-chart-1 block h-full rounded-full"
+                style={{ width: `${Math.max(selected.share * 100, 1)}%` }}
+              />
+            </div>
+          </div>
           <KeyValue label="Self / total time" value={`${formatMs(selected.selfMs)} / ${formatMs(selected.totalMs)}`} />
           <KeyValue
             label="Rows · actual / est."
@@ -109,7 +126,7 @@ export function ExplainView({
 
 function KeyValue({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex justify-between gap-3 border-b py-[7px] text-xs">
+    <div className="flex justify-between gap-3 border-b py-[7px] text-xs last:border-b-0">
       <span className="text-muted-foreground shrink-0">{label}</span>
       <span className="selectable min-w-0 text-right font-mono break-words">{value}</span>
     </div>
@@ -133,8 +150,10 @@ function PlanTableRow({ row, selected, onSelect }: { row: PlanRow; selected: boo
         }
       }}
       className={cn(
-        'hover:bg-accent/50 cursor-default outline-none focus-visible:bg-accent',
-        selected && 'bg-muted shadow-[inset_2px_0_0_var(--foreground)]',
+        'cursor-default outline-none focus-visible:bg-accent',
+        selected
+          ? 'bg-brand-soft shadow-[inset_2px_0_0_var(--brand)]'
+          : 'hover:bg-foreground/[0.025] dark:hover:bg-white/[0.03]',
       )}
     >
       <td className="border-b px-3 py-2.5 align-top">
@@ -153,8 +172,8 @@ function PlanTableRow({ row, selected, onSelect }: { row: PlanRow; selected: boo
           {target && <span className="text-muted-foreground">{target.split(' ')[0]}</span>}
           {target && <span className="font-mono">{target.split(' ').slice(1).join(' ')}</span>}
           {row.hottest && (
-            <span className="border-warning-line bg-warning-bg text-warning inline-flex h-[18px] items-center gap-1 rounded-full border px-2 text-[11px] font-medium">
-              <Clock className="size-2.5" aria-hidden="true" />
+            <span className="border-warning-line bg-warning-bg text-warning inline-flex h-[18px] items-center gap-1 rounded-full border px-1.5 text-[10.5px] font-semibold">
+              <Flame className="size-2.5" aria-hidden="true" />
               Most self time
             </span>
           )}
@@ -181,11 +200,14 @@ function PlanTableRow({ row, selected, onSelect }: { row: PlanRow; selected: boo
           <span className="text-muted-foreground">{(row.share * 100).toFixed(1)}%</span>
         </div>
         <div
-          className="bg-chart-track mt-1.5 h-1.5 overflow-hidden rounded-[3px]"
+          className="bg-chart-track mt-1.5 h-1.5 overflow-hidden rounded-full"
           role="img"
           aria-label={`${(row.share * 100).toFixed(1)}% of execution time`}
         >
-          <span className="bg-chart-1 block h-full rounded-[3px]" style={{ width: `${row.share * 100}%` }} />
+          <span
+            className="bg-chart-1 block h-full rounded-full"
+            style={{ width: `${row.share > 0 ? Math.max(row.share * 100, 1.5) : 0}%` }}
+          />
         </div>
       </td>
       <td className="border-b px-3 py-2.5 text-right align-top font-mono whitespace-nowrap">{formatMs(row.totalMs)}</td>

@@ -1,9 +1,9 @@
 import { PostgreSQL, sql, type SQLNamespace } from '@codemirror/lang-sql';
-import { setDiagnostics } from '@codemirror/lint';
+import { linter, setDiagnostics } from '@codemirror/lint';
 import { Prec } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
 import CodeMirror from '@uiw/react-codemirror';
-import { useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { kleosEditorTheme, kleosHighlight, ranStatementField, setRanRange } from './editor-extensions';
 
 export type ErrorMark = { from: number; to: number; message: string };
@@ -44,6 +44,22 @@ const runKeys = Prec.highest(
     },
   ]),
 );
+
+/**
+ * The lint extension lives in the base configuration. setDiagnostics() would otherwise add it
+ * with StateEffect.appendConfig, and @uiw/react-codemirror drops appended config on every
+ * StateEffect.reconfigure it dispatches (it reconfigures whenever a prop identity changes), which
+ * silently removed the error underline after the next re-render (e.g. switching workspace tabs).
+ */
+const lintState = linter(null);
+
+/** Stable identity: an inline object would make the wrapper reconfigure on every render. */
+const basicSetup = {
+  foldGutter: false,
+  highlightActiveLine: false,
+  highlightSelectionMatches: false,
+  syntaxHighlighting: false,
+} as const;
 
 function clamp(view: EditorView, n: number) {
   return Math.max(0, Math.min(n, view.state.doc.length));
@@ -93,11 +109,20 @@ export function SqlEditor({
       sql({ dialect: PostgreSQL, schema, defaultSchema }),
       runKeys,
       ranStatementField,
+      lintState,
       kleosHighlight,
       EditorView.contentAttributes.of({ 'aria-label': 'SQL editor' }),
     ],
     [schema, defaultSchema],
   );
+
+  // The parent passes a new onChange each render; route it through a ref so the wrapper keeps
+  // one callback and does not reconfigure the editor on every keystroke or tab switch.
+  const onChangeRef = useRef(onChange);
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  });
+  const stableOnChange = useCallback((next: string) => onChangeRef.current(next), []);
 
   // Re-mark after each run (new ranges come with a new run, so identity is enough).
   useEffect(() => {
@@ -110,17 +135,12 @@ export function SqlEditor({
     <div ref={wrapRef} className="h-full min-h-0">
       <CodeMirror
         value={value}
-        onChange={onChange}
+        onChange={stableOnChange}
         theme={kleosEditorTheme}
         extensions={extensions}
         height="100%"
         className="h-full min-h-0"
-        basicSetup={{
-          foldGutter: false,
-          highlightActiveLine: false,
-          highlightSelectionMatches: false,
-          syntaxHighlighting: false,
-        }}
+        basicSetup={basicSetup}
         onCreateEditor={(view) => {
           viewRef.current = view;
           onView(view);

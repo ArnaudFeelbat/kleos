@@ -1,5 +1,6 @@
 import { CircleX, RefreshCw } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { SkeletonList } from '@/features/common/skeletons';
 import { cn } from '@/lib/utils';
 
 type Props = {
@@ -17,9 +18,9 @@ type Props = {
 /** Card with the monitor panel header: title, extra, and the poll source on the right. */
 export function Panel({ title, extra, poll, error, className, children }: Props) {
   return (
-    <section aria-label={title} className={cn('bg-card min-w-0 rounded-xl border', className)}>
-      <div className="flex items-center gap-2 border-b px-4 py-3">
-        <h2 className="text-sm font-semibold">{title}</h2>
+    <section aria-label={title} className={cn('surface-raised min-w-0 overflow-hidden rounded-xl', className)}>
+      <div className="flex min-h-11 items-center gap-2 border-b px-4 py-2.5">
+        <h2 className="text-[13px] font-semibold tracking-[-0.01em]">{title}</h2>
         {extra}
         <span className="text-muted-foreground ml-auto inline-flex shrink-0 items-center gap-1.5 font-mono text-[11px]">
           <RefreshCw className="size-[11px]" aria-hidden="true" />
@@ -40,11 +41,21 @@ export function Panel({ title, extra, poll, error, className, children }: Props)
 /** Small table styles shared by the monitor panels (denser than the shadcn table). */
 export const tbl = {
   table: 'w-full border-separate border-spacing-0 text-xs',
-  th: 'text-muted-foreground h-[34px] border-b px-3 text-left font-medium whitespace-nowrap',
+  th: 'bg-sidebar/70 text-muted-foreground h-[32px] border-b px-3 text-left text-[11.5px] font-medium whitespace-nowrap',
+  tr: 'hover:bg-foreground/[0.025] dark:hover:bg-white/[0.03]',
   td: 'h-[38px] border-b px-3 whitespace-nowrap [tr:last-child>&]:border-b-0',
   num: 'text-right font-mono',
 };
 
 export function PanelEmpty({ children }: { children: ReactNode }) {
-  return <p className="text-muted-foreground px-4 py-6 text-center text-xs">{children}</p>;
+  return (
+    <p className="text-muted-foreground flex items-center justify-center gap-2 px-4 py-6 text-center text-xs">
+      {children}
+    </p>
+  );
+}
+
+/** The Loading… state of a panel: placeholder rows in the shared skeleton style. */
+export function PanelLoading({ rows = 3 }: { rows?: number }) {
+  return <SkeletonList rows={rows} rowClassName="h-4" className="px-4 py-4" label="Loading" />;
 }

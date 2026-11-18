@@ -1,6 +1,6 @@
 import { connectionColors, sslModes, type SavedConnection, type TestConnectionResult } from '@kleos/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { CircleCheck, CircleX, Slash, Trash } from 'lucide-react';
+import { CircleX, Database, LoaderCircle, Lock, Plug, Slash, Trash } from 'lucide-react';
 import { RadioGroup as RadioGroupPrimitive } from 'radix-ui';
 import { useId, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
@@ -21,9 +21,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { Callout } from '@/features/common/callout';
+import { kbdOnPrimary } from '@/features/common/styles';
 import { api, errorText, queryKeys } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { connectionColorLabel, connectionColorSwatch } from './colors';
+import { ColorDot } from './favorites-list';
 import {
   applyConnectionUrl,
   effectiveNickname,
@@ -151,7 +154,7 @@ export function ConnectionForm({ saved, connecting, onSaved, onDeleted, onConnec
     <form
       noValidate
       aria-label="Connection"
-      className="bg-card w-full max-w-[620px] rounded-xl border shadow-[0_1px_3px_rgba(0,0,0,.06)]"
+      className="surface-raised animate-in fade-in-0 slide-in-from-bottom-1 w-full max-w-[620px] rounded-xl duration-200"
       onSubmit={(e) => {
         e.preventDefault();
         void handleConnect();
@@ -165,19 +168,36 @@ export function ConnectionForm({ saved, connecting, onSaved, onDeleted, onConnec
         setErrors({});
       }}
     >
-      <div className="flex flex-col gap-1.5 px-6 pt-6">
-        <div className="flex items-center gap-2.5">
-          <h1 className="truncate text-xl font-semibold tracking-[-0.01em]">{title}</h1>
-          <Badge variant="secondary" className="h-5 text-[11px]">
-            {!saved ? 'New' : dirty ? 'Edited' : 'Saved'}
-          </Badge>
+      <div className="flex items-start gap-3.5 px-6 pt-6">
+        <span
+          aria-hidden="true"
+          className="surface-raised relative flex size-10 shrink-0 items-center justify-center rounded-xl"
+        >
+          <Database className="text-brand-text size-[18px]" />
+          <ColorDot color={form.color} className="ring-card absolute -right-0.5 -bottom-0.5 size-2.5 ring-2" />
+        </span>
+        <div className="flex min-w-0 flex-col gap-1">
+          <div className="flex items-center gap-2.5">
+            <h1 className="truncate text-lg leading-tight font-semibold tracking-[-0.015em]">{title}</h1>
+            <Badge
+              variant="outline"
+              className={cn(
+                'h-5 text-[11px]',
+                !saved && 'border-brand-line bg-brand-soft text-brand-text',
+                saved && dirty && 'border-warning-line bg-warning-bg text-warning',
+              )}
+            >
+              {!saved ? 'New' : dirty ? 'Edited' : 'Saved'}
+            </Badge>
+          </div>
+          <p className="text-muted-foreground text-[12.5px]">
+            Paste a <span className="text-foreground/80 font-mono">postgres://</span> URL into any field to fill the
+            whole form.
+          </p>
         </div>
-        <p className="text-muted-foreground">
-          Paste a <span className="font-mono">postgres://</span> URL into any field to fill the whole form.
-        </p>
       </div>
 
-      <div className="grid grid-cols-6 gap-x-4 gap-y-3.5 px-6 py-5">
+      <div className="grid grid-cols-6 gap-x-4 gap-y-4 px-6 pt-6 pb-6">
         <Field className="col-span-6" label="Nickname" htmlFor={id('nick')} error={errors.nickname}>
           <Input
             id={id('nick')}
@@ -263,7 +283,7 @@ export function ConnectionForm({ saved, connecting, onSaved, onDeleted, onConnec
         </Field>
 
         <fieldset className="col-span-6 flex flex-col gap-2">
-          <legend className="mb-2 text-xs font-medium">Window color</legend>
+          <legend className="text-foreground/80 mb-2 text-xs font-medium">Window color</legend>
           <div className="flex flex-wrap items-center gap-2.5">
             <RadioGroupPrimitive.Root
               aria-label="Window color"
@@ -277,7 +297,7 @@ export function ConnectionForm({ saved, connecting, onSaved, onDeleted, onConnec
                   key={color}
                   value={color}
                   aria-label={connectionColorLabel[color]}
-                  className="ring-offset-background data-[state=checked]:ring-ring focus-visible:ring-ring/50 flex size-6 items-center justify-center rounded-full border ring-offset-2 outline-none focus-visible:ring-[3px] data-[state=checked]:ring-2"
+                  className="ring-offset-card data-[state=checked]:ring-brand focus-visible:ring-ring/30 flex size-6 items-center justify-center rounded-full shadow-[inset_0_0_0_1px_rgb(0_0_0/0.12)] ring-offset-2 outline-none hover:scale-110 focus-visible:ring-[3px] data-[state=checked]:ring-2 dark:shadow-[inset_0_0_0_1px_rgb(255_255_255/0.14)]"
                   style={color === 'none' ? undefined : { background: connectionColorSwatch[color] }}
                 >
                   {color === 'none' && <Slash className="text-muted-foreground size-3.5" aria-hidden="true" />}
@@ -288,9 +308,10 @@ export function ConnectionForm({ saved, connecting, onSaved, onDeleted, onConnec
           </div>
         </fieldset>
 
-        <div className="col-span-6 flex items-center justify-between gap-4 rounded-lg border px-3.5 py-3">
+        <div className="bg-muted/45 col-span-6 flex items-center justify-between gap-4 rounded-lg px-3.5 py-3 shadow-[inset_0_0_0_1px_var(--edge)] dark:bg-white/[0.03]">
           <div className="flex flex-col gap-0.5">
-            <Label htmlFor={id('ro')} className="text-[13px]">
+            <Label htmlFor={id('ro')} className="flex items-center gap-1.5 text-[13px]">
+              <Lock className="text-muted-foreground size-3.5" aria-hidden="true" />
               Read-only
             </Label>
             <span id={id('ro-desc')} className="text-muted-foreground text-xs">
@@ -309,13 +330,12 @@ export function ConnectionForm({ saved, connecting, onSaved, onDeleted, onConnec
         {test && <TestResult outcome={test} />}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 border-t px-6 py-4">
+      <div className="bg-muted/40 flex flex-wrap items-center gap-2 rounded-b-xl border-t px-6 py-3.5 dark:bg-white/[0.02]">
         {saved && (
           <Button
             type="button"
             variant="ghost"
-            size="sm"
-            className="text-destructive hover:text-destructive"
+            className="text-destructive hover:text-destructive hover:bg-error-bg -ml-2.5 dark:hover:bg-[color-mix(in_srgb,var(--destructive)_14%,transparent)]"
             onClick={() => setConfirmDelete(true)}
           >
             <Trash aria-hidden="true" />
@@ -323,15 +343,21 @@ export function ConnectionForm({ saved, connecting, onSaved, onDeleted, onConnec
           </Button>
         )}
         <span className="flex-1" />
-        <Button type="button" variant="outline" size="sm" onClick={handleTest} disabled={testMutation.isPending}>
+        <Button type="button" variant="outline" onClick={handleTest} disabled={testMutation.isPending}>
+          {testMutation.isPending ? (
+            <LoaderCircle className="animate-spin" aria-hidden="true" />
+          ) : (
+            <Plug className="size-3.5" aria-hidden="true" />
+          )}
           {testMutation.isPending ? 'Testing…' : 'Test connection'}
         </Button>
-        <Button type="button" variant="outline" size="sm" onClick={() => void handleSave()} disabled={busy || !dirty}>
+        <Button type="button" variant="outline" onClick={() => void handleSave()} disabled={busy || !dirty}>
           Save
         </Button>
-        <Button type="submit" size="sm" disabled={busy} title={dirty ? 'Saves the favorite, then connects' : undefined}>
+        <Button type="submit" disabled={busy} title={dirty ? 'Saves the favorite, then connects' : undefined}>
+          {connecting && <LoaderCircle className="animate-spin" aria-hidden="true" />}
           {connecting ? 'Connecting…' : dirty ? 'Save & Connect' : 'Connect'}
-          <kbd className="rounded border border-current/40 px-1 font-mono text-[11px] font-medium">↵</kbd>
+          <kbd className={kbdOnPrimary}>↵</kbd>
         </Button>
       </div>
 
@@ -372,12 +398,13 @@ function Field({
 }) {
   return (
     <div className={cn('flex flex-col gap-1.5', className)}>
-      <Label htmlFor={htmlFor} className="text-xs">
+      <Label htmlFor={htmlFor} className="text-foreground/80 text-xs">
         {label}
       </Label>
       {children}
       {error && (
-        <span id={`${htmlFor}-error`} className="text-destructive text-xs">
+        <span id={`${htmlFor}-error`} className="text-destructive inline-flex items-center gap-1 text-xs">
+          <CircleX className="size-3 shrink-0" aria-hidden="true" />
           {error}
         </span>
       )}
@@ -388,28 +415,23 @@ function Field({
 function TestResult({ outcome }: { outcome: TestOutcome }) {
   if (outcome.ok) {
     return (
-      <div
+      <Callout
         role="status"
-        className="bg-success-bg border-success-line col-span-6 flex items-start gap-2.5 rounded-lg border px-3.5 py-3"
+        tone="success"
+        className="col-span-6"
+        title={
+          <>
+            Connection works · <span className="tabular">{Math.round(outcome.result.elapsedMs)} ms</span>
+          </>
+        }
       >
-        <CircleCheck className="text-success mt-px size-4 shrink-0" aria-hidden="true" />
-        <div className="flex min-w-0 flex-col gap-0.5">
-          <b className="font-semibold">Connection works · {Math.round(outcome.result.elapsedMs)} ms</b>
-          <span className="text-muted-foreground font-mono text-xs break-words">{outcome.result.version}</span>
-        </div>
-      </div>
+        <span className="text-muted-foreground font-mono text-xs break-words">{outcome.result.version}</span>
+      </Callout>
     );
   }
   return (
-    <div
-      role="alert"
-      className="bg-error-bg border-error-line col-span-6 flex items-start gap-2.5 rounded-lg border px-3.5 py-3"
-    >
-      <CircleX className="text-destructive mt-px size-4 shrink-0" aria-hidden="true" />
-      <div className="flex min-w-0 flex-col gap-0.5">
-        <b className="font-semibold">Connection failed</b>
-        <span className="font-mono text-xs break-words">{outcome.message}</span>
-      </div>
-    </div>
+    <Callout role="alert" tone="error" className="col-span-6" title="Connection failed">
+      <span className="font-mono text-xs break-words">{outcome.message}</span>
+    </Callout>
   );
 }

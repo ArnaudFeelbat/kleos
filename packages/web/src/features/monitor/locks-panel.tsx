@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button';
 import { formatDuration } from '@/lib/format';
 import type { BackendActionRequest } from './backend-action-dialog';
 import { groupLocks } from './monitor-format';
-import { Panel, PanelEmpty } from './panel';
+import { EmptyState } from '@/features/common/empty-state';
+import { Panel, PanelLoading } from './panel';
 
 type Props = {
   locks: StatsResultOf<'locks'> | undefined;
@@ -36,12 +37,15 @@ export function LocksPanel({ locks, sessions, error, poll, onAction }: Props) {
       }
     >
       {!locks ? (
-        <PanelEmpty>Loading…</PanelEmpty>
+        <PanelLoading />
       ) : chains.length === 0 ? (
-        <p className="text-muted-foreground flex items-center justify-center gap-2 px-4 py-6 text-xs">
-          <CircleCheck className="text-success size-4" aria-hidden="true" />
-          No query is waiting on a lock.
-        </p>
+        <EmptyState
+          size="sm"
+          icon={CircleCheck}
+          title="No query is waiting on a lock."
+          hint="Blocked backends and their blockers appear here."
+          className="[&>span:first-child]:text-success py-10"
+        />
       ) : (
         <ul className="flex max-h-[420px] flex-col gap-4 overflow-y-auto px-4 py-3.5">
           {chains.map(({ blocker, waiters }) => {

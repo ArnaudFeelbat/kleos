@@ -1,24 +1,40 @@
 /* React Flow themed with the Kleos tokens (style.css provides the structure). */
 .kleos-er {
-  --xy-background-color: var(--background);
-  --xy-background-pattern-color: var(--input);
-  --xy-edge-stroke: #8b8b93;
+  --xy-background-color: var(--sidebar);
+  --xy-background-pattern-color: color-mix(in srgb, var(--foreground) 16%, transparent);
+  --xy-edge-stroke: color-mix(in srgb, var(--muted-foreground) 70%, transparent);
   --xy-edge-stroke-selected: var(--foreground);
   --xy-edge-stroke-width: 1.5;
-  --xy-edge-label-background-color: var(--background);
+  --xy-edge-label-background-color: var(--card);
   --xy-edge-label-color: var(--muted-foreground);
 }
 .dark .kleos-er {
-  --xy-edge-stroke: #71717a;
+  --xy-background-color: var(--background);
+  --xy-background-pattern-color: color-mix(in srgb, var(--foreground) 13%, transparent);
 }
+/* Edge labels read as small pills: card fill, hairline edge, mono 10.5px. */
 .kleos-er .react-flow__edge-text {
   font-family: 'Geist Mono Variable', ui-monospace, monospace;
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 500;
 }
+.kleos-er .react-flow__edge-textbg {
+  fill: var(--card);
+  stroke: var(--edge);
+  stroke-width: 1;
+}
+/* Edges of the selected table follow the selection: brand stroke and label. */
 .kleos-er .kleos-edge-active .react-flow__edge-path {
-  stroke: var(--foreground);
+  stroke: var(--brand);
   stroke-width: 2;
+}
+.kleos-er .kleos-edge-active .react-flow__edge-text {
+  fill: var(--brand-text);
+  font-weight: 600;
+}
+.kleos-er .kleos-edge-active .react-flow__edge-textbg {
+  fill: var(--card);
+  stroke: var(--brand-line);
 }
 /* Column handles only anchor edges; nothing is connectable. */
 .kleos-er .react-flow__handle {
@@ -31,9 +47,9 @@
   pointer-events: none;
 }
 .kleos-er .react-flow__node {
-  border-radius: 8px;
+  border-radius: 10px;
 }
 .kleos-er .react-flow__node:focus-visible {
-  outline: 2px solid var(--ring);
+  outline: 3px solid color-mix(in srgb, var(--ring) 35%, transparent);
   outline-offset: 2px;
 }

@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { formatAgo, formatBytes, formatCompact } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { DEAD_TUPLE_WARN_PCT, deadTuplePercent, lastVacuumed } from './monitor-format';
-import { Panel, PanelEmpty, tbl } from './panel';
+import { Panel, PanelEmpty, PanelLoading, tbl } from './panel';
 
 const MAX_ROWS = 50;
 
@@ -19,7 +19,7 @@ export function TableHealthPanel({ stats, error, poll, now }: Common & { stats: 
   return (
     <Panel title="Table health" poll={poll} error={error}>
       {!stats ? (
-        <PanelEmpty>Loading…</PanelEmpty>
+        <PanelLoading />
       ) : rows.length === 0 ? (
         <PanelEmpty>No user tables.</PanelEmpty>
       ) : (
@@ -39,7 +39,7 @@ export function TableHealthPanel({ stats, error, poll, now }: Common & { stats: 
                 const warn = pct !== null && pct > DEAD_TUPLE_WARN_PCT;
                 const vacuumed = lastVacuumed(t);
                 return (
-                  <tr key={`${t.schema}.${t.name}`}>
+                  <tr key={`${t.schema}.${t.name}`} className={tbl.tr}>
                     <td className={cn(tbl.td, 'max-w-[160px] truncate font-mono')} title={`${t.schema}.${t.name}`}>
                       {t.name}
                     </td>
@@ -47,11 +47,11 @@ export function TableHealthPanel({ stats, error, poll, now }: Common & { stats: 
                     <td className={tbl.td}>
                       <span className="inline-flex items-center gap-2">
                         <span
-                          className="bg-chart-track inline-block h-1.5 w-16 overflow-hidden rounded-[3px]"
+                          className="bg-chart-track inline-block h-1.5 w-16 overflow-hidden rounded-full"
                           aria-hidden="true"
                         >
                           <span
-                            className="bg-chart-1 block h-full rounded-[3px]"
+                            className={cn('block h-full rounded-full', warn ? 'bg-warning' : 'bg-chart-1')}
                             style={{ width: `${((pcts[i] ?? 0) / scale) * 100}%` }}
                           />
                         </span>
@@ -105,7 +105,7 @@ export function IndexUsagePanel({
   return (
     <Panel title="Index usage" poll={poll} error={error}>
       {!stats ? (
-        <PanelEmpty>Loading…</PanelEmpty>
+        <PanelLoading />
       ) : rows.length === 0 ? (
         <PanelEmpty>No user indexes.</PanelEmpty>
       ) : (
@@ -120,7 +120,7 @@ export function IndexUsagePanel({
             </thead>
             <tbody>
               {rows.map((ix) => (
-                <tr key={`${ix.schema}.${ix.name}`}>
+                <tr key={`${ix.schema}.${ix.name}`} className={tbl.tr}>
                   <td
                     className={cn(tbl.td, 'max-w-[180px] truncate font-mono')}
                     title={`${ix.schema}.${ix.name} on ${ix.table}`}

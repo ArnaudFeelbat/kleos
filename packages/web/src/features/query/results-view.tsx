@@ -1,13 +1,16 @@
-import { CircleExclamationPoint, LoaderCircle } from 'lucide-react';
-import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import { CircleCheck, CircleExclamationPoint, CircleSlash, CircleX, LoaderCircle, Lock, Play } from 'lucide-react';
+import { useCallback, useMemo, useState } from 'react';
 import type { ApiErrorBody } from '@kleos/shared';
 import { Button } from '@/components/ui/button';
 import { classifyType, typeLabel } from '@/features/cells/classify';
+import { Callout } from '@/features/common/callout';
+import { EmptyState } from '@/features/common/empty-state';
+import { GridSkeleton } from '@/features/common/skeletons';
+import { kbdNeutral } from '@/features/common/styles';
 import { DataGrid } from '@/features/grid/data-grid';
 import type { GridColumn, GridSelection } from '@/features/grid/types';
 import { ValueInspector } from '@/features/grid/value-inspector';
 import { formatInt, formatMs } from '@/lib/format';
-import { cn } from '@/lib/utils';
 import type { RunState } from './store';
 
 const isMac = typeof navigator !== 'undefined' && /Mac/.test(navigator.platform);
@@ -42,31 +45,56 @@ export function ResultsView({ run, errorLocation, onLoadMore }: ResultsViewProps
 
   if (!run) {
     return (
-      <EmptyResult>
-        Run a statement with <kbd className="font-mono">{isMac ? '⌘↵' : 'Ctrl+↵'}</kbd>: the selection, or the statement
-        under the cursor.
-      </EmptyResult>
+      <EmptyState
+        icon={Play}
+        title="No results yet"
+        hint={
+          <>
+            Run a statement with <kbd className={kbdNeutral}>{isMac ? '⌘↵' : 'Ctrl+↵'}</kbd>: the selection, or the
+            statement under the cursor.
+          </>
+        }
+      />
     );
   }
   if (run.status === 'running') {
     return (
-      <EmptyResult>
-        <LoaderCircle className="size-4 animate-spin" aria-hidden="true" /> Waiting for the first rows…
-      </EmptyResult>
+      <div className="flex min-h-0 flex-1 flex-col">
+        <p className="text-muted-foreground flex items-center gap-2 px-4 py-2 text-xs" aria-live="polite">
+          <LoaderCircle className="text-brand-text size-3.5 animate-spin" aria-hidden="true" /> Waiting for the first
+          rows…
+        </p>
+        <GridSkeleton rows={6} columns={4} />
+      </div>
     );
   }
   if (run.status === 'error' && run.error) return <QueryErrorPanel error={run.error} location={errorLocation} />;
   if (run.status === 'cancelled') {
-    return <EmptyResult>Cancelled after {formatMs(run.elapsedMs ?? 0)}. Nothing was returned.</EmptyResult>;
+    return (
+      <EmptyState
+        icon={CircleSlash}
+        title={`Cancelled after ${formatMs(run.elapsedMs ?? 0)}.`}
+        hint="Nothing was returned."
+      />
+    );
   }
   if (run.columns.length === 0) {
     return (
-      <div className="flex flex-1 flex-col items-start gap-1 p-6">
-        <span className="font-mono text-base font-semibold">{run.command ?? 'Done'}</span>
-        <span className="text-muted-foreground text-xs">
-          {run.rowCount !== null && run.command && !/\d$/.test(run.command) ? `${formatInt(run.rowCount)} rows · ` : ''}
-          {formatMs(run.elapsedMs ?? 0)}
-        </span>
+      <div className="flex flex-1 items-start p-4">
+        <div className="surface-raised animate-in fade-in-0 flex items-center gap-3 rounded-xl px-4 py-3 duration-200">
+          <span className="bg-success-bg text-success flex size-8 items-center justify-center rounded-lg">
+            <CircleCheck className="size-4" aria-hidden="true" />
+          </span>
+          <div className="flex flex-col gap-0.5">
+            <span className="font-mono text-[14px] font-semibold">{run.command ?? 'Done'}</span>
+            <span className="text-muted-foreground text-xs">
+              {run.rowCount !== null && run.command && !/\d$/.test(run.command)
+                ? `${formatInt(run.rowCount)} rows · `
+                : ''}
+              {formatMs(run.elapsedMs ?? 0)}
+            </span>
+          </div>
+        </div>
       </div>
     );
   }
@@ -92,9 +120,12 @@ export function ResultsView({ run, errorLocation, onLoadMore }: ResultsViewProps
           emptyState="The statement returned no rows."
         />
         {(run.hasMore || run.pageError) && (
-          <div className="flex items-center gap-3 border-t px-3 py-1.5 text-xs">
+          <div className="bg-sidebar/60 flex items-center gap-3 border-t px-3 py-1.5 text-xs">
             {run.pageError ? (
-              <span className="text-destructive">Couldn’t load more rows: {run.pageError}</span>
+              <span className="text-destructive inline-flex items-center gap-1.5">
+                <CircleX className="size-3.5" aria-hidden="true" />
+                Couldn’t load more rows: {run.pageError}
+              </span>
             ) : (
               <span className="text-muted-foreground">More rows are available; they load as you scroll.</span>
             )}
@@ -126,54 +157,47 @@ export function ResultsView({ run, errorLocation, onLoadMore }: ResultsViewProps
   );
 }
 
-function EmptyResult({ children }: { children: ReactNode }) {
-  return (
-    <div className="text-muted-foreground flex flex-1 items-center justify-center gap-2 p-8 text-center text-xs">
-      {children}
-    </div>
-  );
-}
-
 /** Error with its SQLSTATE, message, position and hint; read-only refusals get their own title. */
 export function QueryErrorPanel({ error, location }: { error: ApiErrorBody; location: string | null }) {
   const readOnly = error.code === '25006' || error.code === 'KLEOS_READ_ONLY';
   const sqlstate = /^[0-9A-Z]{5}$/.test(error.code);
   return (
     <div className="p-4">
-      <div
+      <Callout
         role="alert"
-        className={cn(
-          'flex items-start gap-2.5 rounded-lg border px-3.5 py-3',
-          readOnly ? 'bg-card' : 'bg-error-bg border-error-line',
-        )}
-      >
-        <CircleExclamationPoint
-          className={cn('mt-0.5 size-4 shrink-0', readOnly ? 'text-muted-foreground' : 'text-destructive')}
-          aria-hidden="true"
-        />
-        <div className="flex min-w-0 flex-col gap-0.5">
-          {readOnly ? (
-            <>
-              <b className="font-semibold">This connection is read-only</b>
-              <span className="font-mono text-xs">
-                ERROR {error.code}: {error.message}
-              </span>
-            </>
+        tone={readOnly ? 'info' : 'error'}
+        icon={readOnly ? Lock : CircleExclamationPoint}
+        title={
+          readOnly ? (
+            'This connection is read-only'
           ) : (
-            <b className="font-semibold">
-              {sqlstate && <span className="font-mono">{error.code}</span>} {error.message}
-            </b>
-          )}
-          {(location || error.hint) && (
-            <span className="text-xs">
-              {location}
-              {location && error.hint ? ' · ' : ''}
-              {error.hint && <span className="text-muted-foreground">Hint: {error.hint}</span>}
-            </span>
-          )}
-          {error.detail && <span className="text-muted-foreground text-xs whitespace-pre-wrap">{error.detail}</span>}
-        </div>
-      </div>
+            <>
+              {sqlstate && (
+                <>
+                  <span className="bg-background/70 rounded-[4px] px-1 py-px font-mono text-[12px] shadow-[inset_0_0_0_1px_var(--error-line)]">
+                    {error.code}
+                  </span>{' '}
+                </>
+              )}
+              {error.message}
+            </>
+          )
+        }
+      >
+        {readOnly && (
+          <span className="font-mono text-xs">
+            ERROR {error.code}: {error.message}
+          </span>
+        )}
+        {(location || error.hint) && (
+          <span className="text-xs">
+            {location && <span className="font-mono">{location}</span>}
+            {location && error.hint ? ' · ' : ''}
+            {error.hint && <span className="text-muted-foreground">Hint: {error.hint}</span>}
+          </span>
+        )}
+        {error.detail && <span className="text-muted-foreground text-xs whitespace-pre-wrap">{error.detail}</span>}
+      </Callout>
     </div>
   );
 }

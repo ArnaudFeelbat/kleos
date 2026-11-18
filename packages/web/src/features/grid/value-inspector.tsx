@@ -7,6 +7,7 @@ import type { CellKind } from '@/features/cells/classify';
 import { BoolMark, NullMark } from '@/features/cells/cell-value';
 import { formatJsonExact, parseJsonExact, type JsonNode } from '@/features/cells/json';
 import { boolValue, byteaLength, parsePgArray, timestamptzToUtc, type PgArrayItem } from '@/features/cells/preview';
+import { segmentedItem, segmentedList } from '@/features/common/styles';
 import { formatBytes, formatInt } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { copyText } from './copy';
@@ -81,14 +82,17 @@ export function ValueInspector({ columnName, subtitle, kind, value, actions, onC
   }
 
   return (
-    <aside aria-label="Cell value" className="bg-background flex min-h-0 w-[300px] shrink-0 flex-col border-l">
-      <div className="flex items-center gap-2 border-b px-3.5 py-3">
-        <div className="flex min-w-0 flex-col">
-          <b className="truncate font-mono font-semibold">{columnName}</b>
+    <aside
+      aria-label="Cell value"
+      className="bg-background animate-in fade-in-0 slide-in-from-right-2 flex min-h-0 w-[300px] shrink-0 flex-col border-l duration-200"
+    >
+      <div className="bg-sidebar/60 flex min-h-[52px] items-center gap-2 border-b px-3.5 py-2.5">
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <b className="truncate font-mono text-[12.5px] font-semibold">{columnName}</b>
           <span className="text-muted-foreground truncate text-[11px]">{subtitle}</span>
         </div>
         {kind === 'json' && json?.ok && (
-          <div role="tablist" aria-label="JSON view" className="bg-muted ml-auto inline-flex gap-0.5 rounded-lg p-0.5">
+          <div role="tablist" aria-label="JSON view" className={cn(segmentedList, 'ml-auto')}>
             {(['tree', 'raw'] as const).map((v) => (
               <button
                 key={v}
@@ -96,10 +100,7 @@ export function ValueInspector({ columnName, subtitle, kind, value, actions, onC
                 role="tab"
                 aria-selected={view === v}
                 onClick={() => setView(v)}
-                className={cn(
-                  'text-muted-foreground h-6 rounded-md px-2 text-xs font-medium capitalize',
-                  view === v && 'bg-background text-foreground shadow-sm',
-                )}
+                className={cn(segmentedItem, 'h-[22px] px-2 capitalize')}
               >
                 {v}
               </button>
@@ -110,7 +111,7 @@ export function ValueInspector({ columnName, subtitle, kind, value, actions, onC
           type="button"
           variant="ghost"
           size="icon-xs"
-          className={cn(!(kind === 'json' && json?.ok) && 'ml-auto')}
+          className={cn('text-muted-foreground', !(kind === 'json' && json?.ok) && 'ml-auto')}
           aria-label="Close value panel"
           onClick={onClose}
         >
@@ -118,7 +119,7 @@ export function ValueInspector({ columnName, subtitle, kind, value, actions, onC
         </Button>
       </div>
       <div className="selectable min-h-0 flex-1 overflow-auto px-3.5 py-3">{body}</div>
-      <div className="flex flex-wrap items-center gap-2 border-t px-3.5 py-3">
+      <div className="bg-sidebar/60 flex flex-wrap items-center gap-2 border-t px-3.5 py-2.5">
         {actions}
         <Button
           type="button"

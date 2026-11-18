@@ -1,10 +1,13 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { EditorView } from '@codemirror/view';
 import {
-  Check,
   ChartLine,
+  CircleCheck,
+  CircleSlash,
+  CircleX,
   Code,
   Copy,
+  Info,
   ListTree,
   LoaderCircle,
   PanelRight,
@@ -30,6 +33,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { kbdOnPrimary, segmentedItem, segmentedList } from '@/features/common/styles';
 import { copyText, formatRows } from '@/features/grid/copy';
 import { useWorkspace } from '@/features/workspace/context';
 import { api, errorText, queryKeys } from '@/lib/api';
@@ -276,7 +280,11 @@ export function QueryTab() {
     <div className="flex min-h-0 min-w-0 flex-1">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {/* Query tabs */}
-        <div className="bg-sidebar flex items-stretch overflow-x-auto border-b" role="tablist" aria-label="Query tabs">
+        <div
+          className="bg-sidebar flex items-stretch overflow-x-auto border-b [scrollbar-width:none]"
+          role="tablist"
+          aria-label="Query tabs"
+        >
           {qws.tabs.map((t) => {
             const on = t.id === tab.id;
             const dirty = isDirty(t);
@@ -285,8 +293,10 @@ export function QueryTab() {
               <div
                 key={t.id}
                 className={cn(
-                  'group text-muted-foreground flex h-9 shrink-0 items-center gap-2 border-r pr-1.5 pl-3 text-xs',
-                  on && 'bg-background text-foreground font-medium shadow-[inset_0_-2px_0_var(--primary)]',
+                  'group relative flex h-9 shrink-0 items-center gap-2 border-r pr-1.5 pl-3 text-xs',
+                  on
+                    ? 'bg-background text-foreground font-medium after:bg-brand after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 [&_[data-tab-icon]]:text-brand-text'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.03] dark:hover:bg-white/[0.03]',
                 )}
               >
                 {renamingId === t.id ? (
@@ -294,7 +304,7 @@ export function QueryTab() {
                     autoFocus
                     aria-label="Tab name"
                     defaultValue={t.title}
-                    className="bg-background h-6 w-32 rounded border px-1.5 text-xs outline-none"
+                    className="bg-background border-brand ring-ring/25 h-6 w-32 rounded-[5px] border px-1.5 text-xs ring-[3px] outline-none"
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') e.currentTarget.blur();
                       if (e.key === 'Escape') setRenamingId(null);
@@ -310,23 +320,25 @@ export function QueryTab() {
                     type="button"
                     role="tab"
                     aria-selected={on}
-                    className="flex items-center gap-2 outline-none focus-visible:underline"
+                    className="flex items-center gap-2 rounded-sm outline-none focus-visible:underline focus-visible:underline-offset-4"
                     title="Double-click to rename"
                     onClick={() => setActiveTab(sid, t.id)}
                     onDoubleClick={() => setRenamingId(t.id)}
                   >
-                    <Icon className="size-[13px]" aria-hidden="true" />
+                    <Icon data-tab-icon="" className="size-[13px]" aria-hidden="true" />
                     <span className="max-w-44 truncate">{t.title}</span>
                     {(t.run?.status === 'running' || t.explain?.status === 'running') && (
-                      <LoaderCircle className="size-3 animate-spin" role="img" aria-label="Running" />
+                      <LoaderCircle className="text-brand-text size-3 animate-spin" role="img" aria-label="Running" />
                     )}
-                    {dirty && <span className="bg-foreground size-1.5 rounded-full" role="img" aria-label="Unsaved" />}
+                    {dirty && (
+                      <span className="bg-foreground/55 size-1.5 rounded-full" role="img" aria-label="Unsaved" />
+                    )}
                   </button>
                 )}
                 <button
                   type="button"
                   className={cn(
-                    'hover:bg-accent inline-flex size-5 items-center justify-center rounded-sm opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
+                    'text-muted-foreground hover:text-foreground inline-flex size-5 items-center justify-center rounded-[4px] opacity-0 group-hover:opacity-100 hover:bg-black/[0.06] focus-visible:opacity-100 dark:hover:bg-white/[0.08]',
                     on && 'opacity-100',
                   )}
                   aria-label={`Close ${t.title}`}
@@ -342,12 +354,12 @@ export function QueryTab() {
               <Button
                 type="button"
                 variant="ghost"
-                size="icon"
-                className="h-9 rounded-none"
+                size="icon-sm"
+                className="text-muted-foreground hover:text-foreground mx-1 self-center"
                 aria-label="New query tab"
                 onClick={() => addTab(sid)}
               >
-                <Plus className="text-muted-foreground size-3.5" />
+                <Plus className="size-3.5" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>New query tab</TooltipContent>
@@ -359,9 +371,9 @@ export function QueryTab() {
           <Tooltip>
             <TooltipTrigger asChild>
               <Button type="button" size="sm" onClick={run} disabled={running}>
-                <Play className="size-3.5 fill-current" aria-hidden="true" />
+                <Play className="size-3 fill-current" aria-hidden="true" />
                 Run
-                <kbd className="rounded border border-current/40 px-1 font-mono text-[11px]">{keys.run}</kbd>
+                <kbd className={kbdOnPrimary}>{keys.run}</kbd>
               </Button>
             </TooltipTrigger>
             <TooltipContent>Run the selection, or the statement under the cursor ({keys.run})</TooltipContent>
@@ -431,7 +443,7 @@ export function QueryTab() {
           aria-valuemin={96}
           aria-valuemax={720}
           tabIndex={0}
-          className="hover:bg-ring/20 focus-visible:bg-ring/30 h-1.5 shrink-0 cursor-row-resize border-t outline-none"
+          className="hover:bg-brand/25 focus-visible:bg-brand/30 bg-sidebar h-1.5 shrink-0 cursor-row-resize border-t transition-colors outline-none"
           onPointerDown={onSplitDown}
           onPointerMove={onSplitMove}
           onPointerUp={() => (dragRef.current = null)}
@@ -442,8 +454,8 @@ export function QueryTab() {
         />
 
         {/* Result header */}
-        <div className="flex flex-wrap items-center gap-3 border-b px-3 py-2">
-          <div role="tablist" aria-label="Result view" className="bg-muted inline-flex gap-0.5 rounded-lg p-0.5">
+        <div className="flex min-h-11 flex-wrap items-center gap-3 border-b px-3 py-1.5">
+          <div role="tablist" aria-label="Result view" className={segmentedList}>
             {(
               [
                 ['results', 'Results', Table2],
@@ -457,12 +469,9 @@ export function QueryTab() {
                 role="tab"
                 aria-selected={tab.view === v}
                 onClick={() => setView(v)}
-                className={cn(
-                  'text-muted-foreground inline-flex h-[26px] items-center gap-1.5 rounded-md px-3 text-xs font-medium',
-                  tab.view === v && 'bg-background text-foreground shadow-sm',
-                )}
+                className={cn(segmentedItem, 'px-3')}
               >
-                <Icon className="size-[13px]" aria-hidden="true" />
+                <Icon aria-hidden="true" />
                 {label}
               </button>
             ))}
@@ -559,7 +568,7 @@ function ResultStatus({ tab, elapsed }: { tab: QueryTabState; elapsed: number })
     if (ex?.status !== 'done' || !ex.result) return null;
     return (
       <>
-        <span className="bg-muted inline-flex h-5 items-center rounded-full px-2 font-mono text-[11px] font-medium">
+        <span className="bg-muted text-foreground/80 inline-flex h-5 items-center rounded-[5px] px-1.5 font-mono text-[10.5px] font-medium shadow-[inset_0_0_0_1px_var(--edge)]">
           EXPLAIN (ANALYZE, FORMAT JSON)
         </span>
         <span className="text-xs">
@@ -568,7 +577,10 @@ function ResultStatus({ tab, elapsed }: { tab: QueryTabState; elapsed: number })
           <span className="text-muted-foreground"> · Execution</span>{' '}
           <b className="font-mono font-semibold">{formatMs(ex.result.executionMs)}</b>
         </span>
-        <span className="text-muted-foreground text-xs">ANALYZE executes the statement.</span>
+        <span className="text-muted-foreground inline-flex items-center gap-1 text-xs">
+          <Info className="size-3" aria-hidden="true" />
+          ANALYZE executes the statement.
+        </span>
       </>
     );
   }
@@ -576,12 +588,17 @@ function ResultStatus({ tab, elapsed }: { tab: QueryTabState; elapsed: number })
   if (!run) return null;
   if (run.status === 'running') return <Running elapsed={elapsed} label="Running" />;
   if (run.status === 'cancelled') {
-    return <span className="text-muted-foreground text-xs">Cancelled after {formatMs(run.elapsedMs ?? 0)}</span>;
+    return (
+      <span className="text-muted-foreground inline-flex items-center gap-1.5 text-xs">
+        <CircleSlash className="size-3.5" aria-hidden="true" />
+        Cancelled after <span className="font-mono">{formatMs(run.elapsedMs ?? 0)}</span>
+      </span>
+    );
   }
   if (run.status === 'error') {
     return (
       <span className="text-destructive inline-flex items-center gap-1.5 text-xs">
-        <X className="size-3.5" aria-hidden="true" />
+        <CircleX className="size-3.5" aria-hidden="true" />
         <b className="font-semibold">Failed</b>
         <span className="text-muted-foreground">· {formatMs(run.elapsedMs ?? 0)}</span>
       </span>
@@ -603,8 +620,8 @@ function ResultStatus({ tab, elapsed }: { tab: QueryTabState; elapsed: number })
       : `${formatInt(run.rows.length)}${run.hasMore ? '+' : ''} row${run.rows.length === 1 && !run.hasMore ? '' : 's'}`;
   return (
     <span className="inline-flex items-center gap-1.5 text-xs">
-      <Check className="text-success size-3.5" aria-hidden="true" />
-      <b className={cn('font-semibold', run.columns.length === 0 && 'font-mono')}>{headline}</b>
+      <CircleCheck className="text-success size-3.5" aria-hidden="true" />
+      <b className={cn('tabular font-semibold', run.columns.length === 0 && 'font-mono')}>{headline}</b>
       <span className="text-muted-foreground">
         · {formatMs(run.elapsedMs ?? 0)} · {where}
       </span>
@@ -615,7 +632,7 @@ function ResultStatus({ tab, elapsed }: { tab: QueryTabState; elapsed: number })
 function Running({ elapsed, label }: { elapsed: number; label: string }) {
   return (
     <span className="inline-flex items-center gap-1.5 text-xs">
-      <LoaderCircle className="size-3.5 animate-spin" aria-hidden="true" />
+      <LoaderCircle className="text-brand-text size-3.5 animate-spin" aria-hidden="true" />
       <b className="font-semibold" aria-live="polite">
         {label}…
       </b>

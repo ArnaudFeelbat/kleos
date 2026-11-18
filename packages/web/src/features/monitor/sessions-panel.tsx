@@ -7,7 +7,7 @@ import { formatDuration } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type { BackendActionRequest } from './backend-action-dialog';
 import { formatWait, isClientBackend, sortSessions, stateKind } from './monitor-format';
-import { Panel, PanelEmpty, tbl } from './panel';
+import { Panel, PanelLoading, tbl } from './panel';
 
 const MAX_ROWS = 200;
 
@@ -35,7 +35,7 @@ export function StateBadge({ state }: { state: string | null }) {
   if (kind === 'active') {
     return (
       <Badge variant="outline" className="h-5 text-[11px]">
-        <span className="size-1.5 rounded-full bg-[#22c55e]" aria-hidden="true" />
+        <span className="bg-success size-1.5 rounded-full" aria-hidden="true" />
         active
       </Badge>
     );
@@ -67,7 +67,7 @@ export function SessionsPanel({ stats, blockerPids, waitersOf, error, poll, onAc
       }
     >
       {!stats ? (
-        <PanelEmpty>Loading…</PanelEmpty>
+        <PanelLoading rows={5} />
       ) : (
         <div className="relative overflow-x-auto">
           <table className={tbl.table}>
@@ -111,7 +111,7 @@ function SessionRow({
   const idleInTx = stateKind(s.state) === 'idle-in-transaction';
   const selfTitle = s.isSelf ? 'This is a Kleos connection of this window' : undefined;
   return (
-    <tr className={cn(idleInTx && 'bg-warning-bg')}>
+    <tr className={cn(idleInTx ? 'bg-warning-bg' : tbl.tr)}>
       <td className={cn(tbl.td, tbl.num)}>{s.pid}</td>
       <td className={tbl.td}>{s.user ?? '—'}</td>
       <td className={cn(tbl.td, 'text-muted-foreground')}>

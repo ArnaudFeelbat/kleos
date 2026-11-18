@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { CellKind } from '@/features/cells/classify';
+import { cn } from '@/lib/utils';
 import { chipDescription, operatorLabels, operatorNames, operatorNeedsValue, type FilterChip } from './filters';
 
 export type FilterColumn = { name: string; kind: CellKind };
@@ -35,41 +36,56 @@ export function FilterBar({ columns, chips, onChipsChange, where, onWhereChange 
   }
 
   return (
-    <div className="bg-background flex flex-wrap items-center gap-2 border-b px-4 py-2.5">
-      <Funnel className="text-muted-foreground size-4" aria-hidden="true" />
+    <div className="bg-sidebar/50 flex flex-wrap items-center gap-2 border-b px-4 py-2">
+      <Funnel
+        className={cn('size-3.5 shrink-0', chips.length > 0 || where ? 'text-brand-text' : 'text-muted-foreground')}
+        aria-hidden="true"
+      />
       {chips.map((chip) => (
         <span
           key={chip.id}
-          className="bg-background inline-flex h-7 items-center gap-1.5 rounded-md border pr-1 pl-2.5 text-xs"
+          className="bg-brand-soft animate-in fade-in-0 zoom-in-95 inline-flex h-7 items-center gap-1.5 rounded-md pr-1 pl-2.5 text-xs shadow-[inset_0_0_0_1px_var(--brand-line)] duration-150"
           aria-label={`Filter: ${chipDescription(chip)}`}
         >
-          <span className="font-mono">{chip.column}</span>
-          <span className="text-muted-foreground">{operatorLabels[chip.op]}</span>
+          <span className="font-mono font-medium">{chip.column}</span>
+          <span className="text-muted-foreground font-mono">{operatorLabels[chip.op]}</span>
           {operatorNeedsValue(chip.op) && <span className="max-w-48 truncate font-mono">{chip.value}</span>}
           <Button
             type="button"
             variant="ghost"
             size="icon-xs"
-            className="size-5"
+            className="text-muted-foreground hover:text-foreground size-5 hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
             aria-label={`Remove filter ${chipDescription(chip)}`}
             onClick={() => onChipsChange(chips.filter((c) => c.id !== chip.id))}
           >
-            <X className="text-muted-foreground size-3" />
+            <X className="size-3" />
           </Button>
         </span>
       ))}
       <AddFilter columns={columns} onAdd={(chip) => onChipsChange([...chips, chip])} />
-      {chips.length > 0 && <span className="text-muted-foreground text-xs">AND</span>}
-      <div className="border-input flex h-7 min-w-0 flex-[1_1_280px] items-center overflow-hidden rounded-md border">
+      {chips.length > 0 && (
+        <span className="text-muted-foreground font-mono text-[10.5px] font-semibold tracking-[0.06em]">AND</span>
+      )}
+      <div
+        className={cn(
+          'bg-card focus-within:border-brand focus-within:ring-ring/25 flex h-7 min-w-0 flex-[1_1_280px] items-center overflow-hidden rounded-md border transition-[border-color,box-shadow] focus-within:ring-[3px] dark:bg-white/[0.03]',
+          where ? 'border-brand-line' : 'border-input',
+        )}
+      >
         <label
           htmlFor={whereId}
-          className="bg-muted border-input flex h-full items-center border-r px-2 font-mono text-[11px] font-medium"
+          className={cn(
+            'flex h-full items-center border-r px-2 font-mono text-[10.5px] font-semibold tracking-[0.04em]',
+            where
+              ? 'border-brand-line bg-brand-soft text-brand-text'
+              : 'border-input bg-muted text-muted-foreground dark:bg-white/[0.04]',
+          )}
         >
           WHERE
         </label>
         <input
           id={whereId}
-          className="bg-background h-full min-w-0 flex-1 px-2 font-mono text-xs outline-none"
+          className="placeholder:text-muted-foreground/70 h-full min-w-0 flex-1 bg-transparent px-2 font-mono text-xs outline-none"
           placeholder="raw SQL condition, e.g. metadata->>'channel' <> 'admin'"
           spellCheck={false}
           value={draft}
@@ -87,11 +103,11 @@ export function FilterBar({ columns, chips, onChipsChange, where, onWhereChange 
             type="button"
             variant="ghost"
             size="icon-xs"
-            className="mr-0.5 size-5"
+            className="text-muted-foreground hover:text-foreground mr-0.5 size-5"
             aria-label="Clear WHERE condition"
             onClick={() => onWhereChange('')}
           >
-            <X className="text-muted-foreground size-3" />
+            <X className="size-3" />
           </Button>
         )}
       </div>
@@ -142,14 +158,15 @@ function AddFilter({ columns, onAdd }: { columns: readonly FilterColumn[]; onAdd
           type="button"
           variant="ghost"
           size="sm"
-          className="border-input h-7 border border-dashed px-2.5 text-xs"
+          className="border-foreground/20 text-foreground/75 hover:border-foreground/30 h-7 border border-dashed px-2.5 text-xs data-[state=open]:border-solid data-[state=open]:border-brand data-[state=open]:text-foreground"
         >
           <Plus className="size-3.5" aria-hidden="true" />
           Add filter
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-80 p-3">
+      <PopoverContent align="start" className="w-80 p-3.5">
         <form className="flex flex-col gap-3" onSubmit={submit}>
+          <p className="text-[13px] font-semibold tracking-[-0.01em]">Add a filter</p>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor={`${ids}-col`} className="text-xs">
               Column
