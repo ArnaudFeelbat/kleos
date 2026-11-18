@@ -1,12 +1,13 @@
 import { CircleCheck, CircleExclamationPoint, CircleSlash, CircleX, LoaderCircle, Lock, Play } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
-import type { ApiErrorBody } from '@kleos/shared';
+import { emptyGridLayout, type ApiErrorBody, type GridLayout } from '@kleos/shared';
 import { Button } from '@/components/ui/button';
 import { classifyType, typeLabel } from '@/features/cells/classify';
 import { Callout } from '@/features/common/callout';
 import { EmptyState } from '@/features/common/empty-state';
 import { GridSkeleton } from '@/features/common/skeletons';
 import { kbdNeutral } from '@/features/common/styles';
+import { displayOrder, isEmptyLayout, moveInLayout, resizeInLayout } from '@/features/grid/column-layout';
 import { DataGrid } from '@/features/grid/data-grid';
 import type { GridColumn, GridSelection } from '@/features/grid/types';
 import { ValueInspector } from '@/features/grid/value-inspector';
@@ -36,10 +37,16 @@ type ResultsViewProps = {
 export function ResultsView({ run, errorLocation, onLoadMore }: ResultsViewProps) {
   const [selection, setSelection] = useState<GridSelection | null>(null);
   const [inspect, setInspect] = useState(false);
-  const columns = useMemo(() => (run ? resultColumns(run) : []), [run]);
+  // Reordered and resized for this result only (the view is keyed by run): nothing is remembered.
+  const [layout, setLayout] = useState<GridLayout>(emptyGridLayout);
+  const natural = useMemo(() => (run ? resultColumns(run) : []), [run]);
+  const keys = useMemo(() => natural.map((c) => c.key), [natural]);
+  /** Display position -> index in the result's rows. */
+  const order = useMemo(() => displayOrder(keys, layout.order), [keys, layout.order]);
+  const columns = useMemo(() => order.map((i) => natural[i]!), [order, natural]);
   const rows = run?.rows;
   const getRowMeta = useCallback((i: number) => ({ key: String(i), label: String(i + 1), status: null }), []);
-  const getCell = useCallback((i: number, c: number) => ({ value: rows?.[i]?.[c] ?? null }), [rows]);
+  const getCell = useCallback((i: number, c: number) => ({ value: rows?.[i]?.[order[c]!] ?? null }), [rows, order]);
   const loadMoreIfAny =
     run?.status === 'done' && run.hasMore && !run.loadingMore && !run.pageError ? onLoadMore : undefined;
 
@@ -118,6 +125,11 @@ export function ResultsView({ run, errorLocation, onLoadMore }: ResultsViewProps
             setInspect(true);
           }}
           emptyState="The statement returned no rows."
+          columnWidths={layout.widths}
+          onColumnResize={(key, width) => setLayout((l) => resizeInLayout(l, key, width))}
+          onColumnMove={(from, to) => setLayout((l) => moveInLayout(l, keys, from, to))}
+          onResetColumns={() => setLayout(emptyGridLayout)}
+          columnsCustomized={!isEmptyLayout(layout)}
         />
         {(run.hasMore || run.pageError) && (
           <div className="bg-sidebar/60 flex items-center gap-3 border-t px-3 py-1.5 text-xs">
@@ -149,7 +161,7 @@ export function ResultsView({ run, errorLocation, onLoadMore }: ResultsViewProps
           columnName={focusCol.name}
           subtitle={`${focusCol.typeLabel} · row ${formatInt(focus.row + 1)}`}
           kind={focusCol.kind}
-          value={run.rows[focus.row]?.[focus.col] ?? null}
+          value={run.rows[focus.row]?.[order[focus.col]!] ?? null}
           onClose={() => setInspect(false)}
         />
       )}

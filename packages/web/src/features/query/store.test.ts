@@ -7,6 +7,7 @@ import {
   closeTab,
   getQueryWorkspace,
   getTab,
+  historyLoadsDirectly,
   isDirty,
   loadMore,
   openDraft,
@@ -142,5 +143,14 @@ describe('running a query', () => {
     expect(getTab(sid, tab.id)!.run).toMatchObject({ rows: [['1'], ['2'], ['3']], hasMore: false, rowCount: 3 });
     await loadMore(sid, tab.id);
     expect(mocked.nextPage).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('historyLoadsDirectly', () => {
+  it('loads into an empty tab or one that already holds the same SQL, and asks otherwise', () => {
+    expect(historyLoadsDirectly('', 'select 1')).toBe(true);
+    expect(historyLoadsDirectly('  \n', 'select 1')).toBe(true);
+    expect(historyLoadsDirectly('select 1\n', 'select 1')).toBe(true);
+    expect(historyLoadsDirectly('select 2', 'select 1')).toBe(false);
   });
 });

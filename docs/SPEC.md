@@ -110,7 +110,7 @@ None
 Tints the window header for this connection
 Read-only
 Off
-Blocks edits and opens sessions with default_transaction_read_only = on
+Blocks edits and opens sessions with default_transaction_read_only = on; since 0.3, every query-tab statement also runs in a read-only transaction Kleos opens and rolls back, so typed SET or BEGIN READ WRITE cannot re-enable writes
 Behavior:
 
 - Paste a URL. Pasting a postgres://user:pass@host:5432/db?sslmode=require string into any field fills the whole form.
@@ -203,7 +203,7 @@ The workspace has a sidebar listing schemas, tables and views, and four tabs: Sc
 
 - Foreign-key cells link to the referenced row.
 
-- Editing is enabled only when the table has a primary key and the connection is not read-only.
+- Editing existing rows requires a primary key and a connection that is not read-only. Since 0.3, tables without a primary key accept new rows (no editing or deleting existing ones).
 
 - Edits are staged, not sent: changed cells are highlighted, new rows are marked, and deleted rows are struck through. A review panel shows the pending SQL.
 
@@ -411,8 +411,8 @@ Automated tests run against a throwaway Postgres in Docker, seeded with one tabl
 
 - Form: a macOS desktop app, built with Electron so the Node server and drivers run in the main process unchanged.
 
-- Windows: one window per connection, as in Postico.
+- Windows: one window per connection, as in Postico (v0.1). Since 0.2: one window with a tab per connected server.
 
-- Tables without a primary key: read-only in v1; no editing through ctid.
+- Tables without a primary key: read-only in v0.1–0.2; since 0.3 inserts are allowed, updates and deletes are not; never editing through ctid.
 
 - SSH tunnel: v1.1, on the assumption that the first target databases are directly reachable.

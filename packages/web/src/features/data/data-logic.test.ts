@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { ForeignKey } from '@kleos/shared';
+import type { ForeignKey, Table } from '@kleos/shared';
 import type { TypeInfo } from '@/features/cells/classify';
-import { chipsToFilters, chipToFilter, foreignKeyTarget, type FilterChip } from './filters';
+import { chipsToFilters, chipToFilter, foreignKeyTarget, replaceChip, type FilterChip } from './filters';
 import { renderPendingSql, tokenizeSql } from './pending-sql';
 import {
   buildEdits,
@@ -13,6 +13,7 @@ import {
   type StageState,
 } from './staging';
 import { groupDigits, nextSort, pageCount } from './table-state';
+import { editAccess } from './table-view';
 
 const table = { schema: 'public', name: 'orders' };
 const types: Record<string, TypeInfo> = {
@@ -284,6 +285,65 @@ describe('filters', () => {
       ['lno', '2'],
     ]);
     expect(foreignKeyTarget(fk, { order_id: '1', line: null }, () => 'x')).toBeNull();
+  });
+
+  it('replaces an edited chip in place, keeping the others and their order', () => {
+    const chips: FilterChip[] = [
+      { id: 'a', column: 'status', op: 'eq', value: 'paid' },
+      { id: 'b', column: 'total', op: 'gt', value: '100' },
+      { id: 'c', column: 'note', op: 'isNull', value: '' },
+    ];
+    const next = replaceChip(chips, { id: 'b', column: 'total', op: 'lte', value: '50' });
+    expect(next.map((c) => c.id)).toEqual(['a', 'b', 'c']);
+    expect(next[1]).toEqual({ id: 'b', column: 'total', op: 'lte', value: '50' });
+    expect(next[0]).toBe(chips[0]);
+    expect(replaceChip(chips, { id: 'zz', column: 'x', op: 'eq', value: '1' })).toEqual(chips);
+  });
+});
+
+describe('editAccess', () => {
+  const base: Table = {
+    schema: 'public',
+    name: 'events',
+    kind: 'table',
+    columns: [],
+    primaryKey: ['id'],
+    indexes: [],
+    constraints: [],
+    rowEstimate: 0,
+    totalBytes: 0,
+    comment: null,
+  };
+
+  it('allows everything on a table with a primary key', () => {
+    expect(editAccess(base, false)).toEqual({ insert: true, modify: true, notice: null });
+  });
+
+  it('allows only inserts on ordinary and partitioned tables without a primary key', () => {
+    const expected = {
+      insert: true,
+      modify: false,
+      notice: 'No primary key: you can add rows, but not edit or delete existing ones.',
+    };
+    expect(editAccess({ ...base, primaryKey: [] }, false)).toEqual(expected);
+    expect(editAccess({ ...base, kind: 'partitioned', primaryKey: [] }, false)).toEqual(expected);
+  });
+
+  it('keeps views and read-only connections read-only', () => {
+    expect(editAccess({ ...base, kind: 'view', primaryKey: [] }, false)).toMatchObject({
+      insert: false,
+      modify: false,
+    });
+    expect(editAccess({ ...base, kind: 'materialized' }, false).insert).toBe(false);
+    expect(editAccess({ ...base, primaryKey: [] }, true)).toEqual({
+      insert: false,
+      modify: false,
+      notice: 'Read-only connection: editing is off.',
+    });
+  });
+
+  it('allows nothing, silently, while the table is unknown', () => {
+    expect(editAccess(undefined, false)).toEqual({ insert: false, modify: false, notice: null });
   });
 });
 

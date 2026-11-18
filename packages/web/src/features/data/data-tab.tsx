@@ -27,6 +27,7 @@ export function DataTab() {
     <TableView
       key={`${ws.sid}:${key}`}
       sid={ws.sid}
+      connectionId={ws.connection.id}
       table={ref}
       info={info}
       schemaModel={ws.schemaModel}

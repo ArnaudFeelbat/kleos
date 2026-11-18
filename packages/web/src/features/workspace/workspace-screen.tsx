@@ -1,7 +1,8 @@
 import { kleosErrorCodes, type SessionInfo, type TableRef } from '@kleos/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Activity, Code, LoaderCircle, Lock, Network, Table2, Unplug } from 'lucide-react';
-import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -9,6 +10,8 @@ import { DataTab } from '@/features/data/data-tab';
 import { MonitorTab } from '@/features/monitor/monitor-tab';
 import { QueryTab } from '@/features/query/query-tab';
 import { SchemaTab } from '@/features/schema/schema-tab';
+import { openSavedQuery } from '@/features/query/store';
+import { useWorkspaceIntent } from '@/features/shell/workspace-intents';
 import { api, ApiError, errorText, queryKeys } from '@/lib/api';
 import { WorkspaceContext, type WorkspaceState, type WorkspaceTab } from './context';
 import { SchemaSidebar } from './schema-sidebar';
@@ -101,6 +104,26 @@ function Workspace({ sid, session, visible }: { sid: string; session: SessionInf
   const { connection } = session;
 
   if (!visited.has(state.activeTab)) setVisited(new Set([...visited, state.activeTab]));
+
+  // Requests from the ⌘K palette (open a table, switch tab, refresh the schema), applied once each.
+  const intent = useWorkspaceIntent(sid);
+  const applied = useRef(0);
+  const { openTable, setActiveTab, refreshSchema } = state.value;
+  useEffect(() => {
+    if (!intent || intent.nonce === applied.current) return;
+    applied.current = intent.nonce;
+    const { intent: i } = intent;
+    if (i.kind === 'open-table') openTable(i.ref, i.tab);
+    else if (i.kind === 'tab') setActiveTab(i.tab);
+    else if (i.kind === 'open-saved') {
+      openSavedQuery(sid, i.query);
+      setActiveTab('query');
+    } else
+      refreshSchema().then(
+        () => toast.success('Schema refreshed'),
+        (err: unknown) => toast.error('Could not refresh the schema', { description: errorText(err) }),
+      );
+  }, [intent, sid, openTable, setActiveTab, refreshSchema]);
 
   const content: Record<WorkspaceTab, ReactNode> = {
     schema: <SchemaTab />,

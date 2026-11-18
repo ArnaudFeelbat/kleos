@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import type { ApiErrorBody, CellValue, ChartSettings, ColumnMeta, ExplainResult } from '@kleos/shared';
+import type { ApiErrorBody, CellValue, ChartSettings, ColumnMeta, ExplainResult, SavedQuery } from '@kleos/shared';
 import { api, ApiError, errorText } from '@/lib/api';
 import { sameChart } from './chart-data';
 import type { RunTarget } from './run-target';
@@ -142,6 +142,11 @@ export function isDirty(tab: QueryTabState): boolean {
   return tab.sql.trim() !== '';
 }
 
+/** A history entry loads without asking when the tab is empty or already holds that SQL. */
+export function historyLoadsDirectly(currentSql: string, entrySql: string): boolean {
+  return currentSql.trim() === '' || currentSql.trim() === entrySql.trim();
+}
+
 export function setActiveTab(sid: string, tabId: string) {
   setWorkspace(sid, (ws) => (ws.activeId === tabId ? ws : { ...ws, activeId: tabId }));
 }
@@ -161,6 +166,25 @@ export function addTab(sid: string, init: Partial<QueryTabState> = {}): string {
 }
 
 /** Opens `sql` from elsewhere (queryDraft) once per nonce. */
+/**
+ * Opens a saved query (SQL and chart settings) in its own query tab, or brings back the tab
+ * that already has it. Shared by the History/Saved panel and the ⌘K palette.
+ */
+export function openSavedQuery(sid: string, q: SavedQuery): void {
+  const open = getQueryWorkspace(sid).tabs.find((t) => t.saved?.id === q.id);
+  if (open) {
+    setActiveTab(sid, open.id);
+    return;
+  }
+  addTab(sid, {
+    title: q.name,
+    sql: q.sql,
+    chart: q.chart,
+    view: q.chart ? 'chart' : 'results',
+    saved: { id: q.id, name: q.name, sql: q.sql, chart: q.chart },
+  });
+}
+
 export function openDraft(sid: string, draft: { sql: string; nonce: number }) {
   if (getQueryWorkspace(sid).draftNonce === draft.nonce) return;
   setWorkspace(sid, (ws) => ({ ...ws, draftNonce: draft.nonce }));

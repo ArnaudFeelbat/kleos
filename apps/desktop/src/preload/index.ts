@@ -14,6 +14,8 @@ contextBridge.exposeInMainWorld('kleos', {
   vibrancy: process.argv.includes('--kleos-vibrancy=1'),
   setTitle: (title: string) => ipcRenderer.send('kleos:set-title', title),
   closeWindow: () => ipcRenderer.send('kleos:close-window'),
+  getAppearance: () => ipcRenderer.invoke('kleos:get-appearance'),
+  setAppearance: (mode: string) => ipcRenderer.send('kleos:set-appearance', mode),
   onCommand: (listener: (command: string) => void) => {
     const handler = (_event: IpcRendererEvent, command: string) => listener(command);
     ipcRenderer.on('kleos:command', handler);

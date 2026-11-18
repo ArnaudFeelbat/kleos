@@ -7,6 +7,7 @@ import type * as ApiModule from '@/lib/api';
 import { api, ApiError } from '@/lib/api';
 import type { KleosBridge } from '@/lib/bridge';
 import { HOME, tabsStore } from '@/features/shell/tabs-store';
+import { ConnectProvider } from './connect-context';
 import { ConnectionsScreen } from './connections-screen';
 
 vi.mock('@/lib/api', async (importOriginal) => {
@@ -33,6 +34,8 @@ const bridge = {
   vibrancy: false,
   setTitle: vi.fn(),
   closeWindow: vi.fn(),
+  getAppearance: vi.fn(async () => 'system' as const),
+  setAppearance: vi.fn(),
   onCommand: vi.fn(() => () => {}),
 } satisfies KleosBridge;
 
@@ -40,7 +43,9 @@ function renderScreen(favorites: SavedConnection[]) {
   mocked.listConnections.mockResolvedValue(favorites);
   return render(
     <Providers>
-      <ConnectionsScreen />
+      <ConnectProvider>
+        <ConnectionsScreen />
+      </ConnectProvider>
     </Providers>,
   );
 }

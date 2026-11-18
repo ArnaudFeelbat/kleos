@@ -43,6 +43,11 @@ export function chipsToFilters(chips: readonly FilterChip[]): Filter[] {
   return chips.map(chipToFilter);
 }
 
+/** `chips` with the chip of the same id replaced, keeping its position (an edited chip). */
+export function replaceChip(chips: readonly FilterChip[], next: FilterChip): FilterChip[] {
+  return chips.map((c) => (c.id === next.id ? next : c));
+}
+
 /** Accessible description of a chip, e.g. "placed_at greater than or equal 2026-11-01". */
 export function chipDescription(chip: FilterChip): string {
   return operatorNeedsValue(chip.op)

@@ -1,7 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { HistoryEntry } from '@kleos/shared';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { WorkspaceContext, type WorkspaceState } from '@/features/workspace/context';
 import type * as apiModule from '@/lib/api';
@@ -257,6 +258,27 @@ describe('QueryTab', () => {
     );
   });
 
+  it('reorders result columns in-session with ⌥→ without saving anything', async () => {
+    const user = userEvent.setup();
+    setSql('select 1 as a, 2 as b');
+    const meta = (name: string) => ({ name, type: 'integer', typeName: 'int4', typeOid: 23, typeCategory: 'N' });
+    mocked.startQuery.mockResolvedValue({
+      qid: 'q',
+      columns: [meta('a'), meta('b')],
+      rows: [['7001', '7002']],
+      hasMore: false,
+      command: null,
+      rowCount: 1,
+      elapsedMs: 1,
+    });
+    renderTab();
+    await user.click(screen.getByRole('button', { name: /^Run/ }));
+    await user.click(await screen.findByText('7001'));
+    await user.keyboard('{Alt>}{ArrowRight}{/Alt}');
+    expect(screen.getAllByRole('gridcell').map((c) => c.textContent)).toEqual(['7002', '7001']);
+    expect(screen.getByText('Moved a to column 2 of 2.')).toBeInTheDocument();
+  });
+
   it('shows the explain plan with the hottest node flagged', async () => {
     const user = userEvent.setup();
     setSql('select * from orders');
@@ -278,5 +300,84 @@ describe('QueryTab', () => {
     expect(await screen.findByText('Most self time')).toBeInTheDocument();
     expect(screen.getByText('EXPLAIN (ANALYZE, FORMAT JSON)')).toBeInTheDocument();
     expect(screen.getByRole('complementary', { name: 'Node details' })).toHaveTextContent('Seq Scan');
+  });
+});
+
+describe('QueryTab history', () => {
+  const entry: HistoryEntry = {
+    id: 'h1',
+    connectionId: 'c1',
+    sql: 'select * from orders where total > 100',
+    kind: 'query',
+    ranAt: '2026-11-18T10:00:00Z',
+    elapsedMs: 4,
+    rowCount: 12,
+    error: null,
+    cancelled: false,
+  };
+  const tabs = () => getQueryWorkspace(sid).tabs;
+  const activeSql = () => {
+    const ws = getQueryWorkspace(sid);
+    return ws.tabs.find((t) => t.id === ws.activeId)!.sql;
+  };
+  beforeEach(() => mocked.history.mockResolvedValue([entry]));
+
+  it('loads an entry straight into an empty tab', async () => {
+    const user = userEvent.setup();
+    renderTab();
+    await user.click(await screen.findByText(entry.sql));
+    expect(tabs()).toHaveLength(1);
+    expect(tabs()[0]!.sql).toBe(entry.sql);
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+  });
+
+  it('loads without asking when the tab already holds that SQL', async () => {
+    const user = userEvent.setup();
+    setSql(`${entry.sql}\n`);
+    renderTab();
+    await user.click(await screen.findByText(entry.sql));
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(tabs()[0]!.sql).toBe(entry.sql);
+  });
+
+  it('asks before replacing other SQL, and opens the entry in a new tab by default', async () => {
+    const user = userEvent.setup();
+    setSql('select 42');
+    renderTab();
+    await user.click(await screen.findByText(entry.sql));
+    const dialog = await screen.findByRole('alertdialog', { name: 'Replace the SQL in this tab?' });
+    const openNew = within(dialog).getByRole('button', { name: 'Open in new tab' });
+    expect(openNew).toHaveFocus();
+    expect(within(dialog).getByRole('button', { name: 'Replace' })).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    expect(tabs()).toHaveLength(2);
+    expect(tabs()[0]!.sql).toBe('select 42');
+    expect(activeSql()).toBe(entry.sql);
+    expect(screen.getByRole('tab', { name: /Query 2/ })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('replaces the SQL of the current tab on Replace', async () => {
+    const user = userEvent.setup();
+    setSql('select 42');
+    renderTab();
+    await user.click(await screen.findByText(entry.sql));
+    await user.click(await screen.findByRole('button', { name: 'Replace' }));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    expect(tabs()).toHaveLength(1);
+    expect(tabs()[0]!.sql).toBe(entry.sql);
+  });
+
+  it('changes nothing on Cancel', async () => {
+    const user = userEvent.setup();
+    setSql('select 42');
+    renderTab();
+    await user.click(await screen.findByText(entry.sql));
+    await user.click(await screen.findByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    expect(tabs()).toHaveLength(1);
+    expect(tabs()[0]!.sql).toBe('select 42');
   });
 });

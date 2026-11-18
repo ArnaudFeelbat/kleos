@@ -1,11 +1,29 @@
 import { Menu, app, shell, type MenuItemConstructorOptions } from 'electron';
+import type { Appearance } from './preferences';
 
 /** Window commands handled by the renderer's tab strip. */
 export type ShellCommand =
-  'new-tab' | 'close-tab' | 'next-tab' | 'prev-tab' | `select-tab-${1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9}`;
+  'new-tab' | 'close-tab' | 'next-tab' | 'prev-tab' | 'palette' | `select-tab-${1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9}`;
 
-/** Native macOS menu bar; tab commands are forwarded to the focused window. */
-export function installMenu(actions: { openMainWindow: () => void; sendCommand: (c: ShellCommand) => void }): void {
+export type MenuActions = {
+  openMainWindow: () => void;
+  sendCommand: (c: ShellCommand) => void;
+  appearance: Appearance;
+  setAppearance: (mode: Appearance) => void;
+  toggleAppearance: () => void;
+};
+
+/**
+ * Native macOS menu bar. Tab and palette commands are forwarded to the focused window;
+ * call again after the appearance changes so the radio items show the current mode.
+ */
+export function installMenu(actions: MenuActions): void {
+  const appearanceItem = (mode: Appearance, label: string): MenuItemConstructorOptions => ({
+    label,
+    type: 'radio',
+    checked: actions.appearance === mode,
+    click: () => actions.setAppearance(mode),
+  });
   const tab = (n: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9): MenuItemConstructorOptions => ({
     label: n === 9 ? 'Last Tab' : `Tab ${n}`,
     accelerator: `CmdOrCtrl+${n}`,
@@ -46,6 +64,19 @@ export function installMenu(actions: { openMainWindow: () => void; sendCommand: 
     {
       label: 'View',
       submenu: [
+        { label: 'Command Palette…', accelerator: 'CmdOrCtrl+K', click: () => actions.sendCommand('palette') },
+        { type: 'separator' },
+        {
+          label: 'Appearance',
+          submenu: [
+            appearanceItem('system', 'Use System Setting'),
+            appearanceItem('light', 'Light'),
+            appearanceItem('dark', 'Dark'),
+            { type: 'separator' },
+            { label: 'Toggle Light / Dark', accelerator: 'CmdOrCtrl+Shift+L', click: () => actions.toggleAppearance() },
+          ],
+        },
+        { type: 'separator' },
         { role: 'reload' },
         { role: 'toggleDevTools' },
         { type: 'separator' },

@@ -1,15 +1,19 @@
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BrowserWindow, app, ipcMain, shell } from 'electron';
+import { BrowserWindow, app, ipcMain, nativeTheme, shell } from 'electron';
 import { startServer, type RunningServer } from '@kleos/server';
 import { installMenu, type ShellCommand } from './menu';
+import { isAppearance, loadPreferences, savePreferences, type Appearance } from './preferences';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const rendererDevUrl = process.env['ELECTRON_RENDERER_URL'];
 const isMac = process.platform === 'darwin';
 
 app.setName('Kleos');
+// Scripted runs (KLEOS_DATA_DIR) get a whole profile of their own, so they neither collide with
+// nor quit because of the Kleos you have open (single-instance lock, caches, preferences).
+if (process.env['KLEOS_DATA_DIR']) app.setPath('userData', process.env['KLEOS_DATA_DIR']);
 
 let server: RunningServer | null = null;
 /** One window; each connected server is a tab inside it. */
@@ -88,21 +92,48 @@ ipcMain.on('kleos:close-window', (event) => {
   BrowserWindow.fromWebContents(event.sender)?.close();
 });
 
+// --- Appearance: System / Light / Dark, remembered between launches. -------------------
+// KLEOS_DATA_DIR isolates scripted runs (scripts/ui-tour.mjs) from the real app data.
+const dataDir = process.env['KLEOS_DATA_DIR'] ?? app.getPath('userData');
+let appearance: Appearance = loadPreferences(dataDir).appearance;
+
+function refreshMenu(): void {
+  installMenu({ openMainWindow, sendCommand, appearance, setAppearance, toggleAppearance });
+}
+
+function setAppearance(mode: Appearance): void {
+  appearance = mode;
+  // The renderer follows prefers-color-scheme, which themeSource drives; vibrancy follows too.
+  nativeTheme.themeSource = mode;
+  savePreferences(dataDir, { appearance: mode });
+  refreshMenu();
+}
+
+function toggleAppearance(): void {
+  setAppearance(nativeTheme.shouldUseDarkColors ? 'light' : 'dark');
+}
+
+ipcMain.handle('kleos:get-appearance', () => appearance);
+ipcMain.on('kleos:set-appearance', (_event, mode: unknown) => {
+  if (isAppearance(mode)) setAppearance(mode);
+});
+
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', () => openMainWindow());
 
   void app.whenReady().then(async () => {
+    // Before any window exists, so the first paint is already in the chosen appearance.
+    nativeTheme.themeSource = appearance;
     server = await startServer({
       token,
-      // KLEOS_DATA_DIR isolates scripted runs (scripts/ui-tour.mjs) from the real app.db.
-      dataDir: process.env['KLEOS_DATA_DIR'] ?? app.getPath('userData'),
+      dataDir,
       staticDir: rendererDevUrl ? undefined : join(here, '../renderer'),
       allowedOrigins: rendererDevUrl ? [new URL(rendererDevUrl).origin] : [],
       version: app.getVersion(),
     });
-    installMenu({ openMainWindow, sendCommand });
+    refreshMenu();
     openMainWindow();
 
     app.on('activate', () => {

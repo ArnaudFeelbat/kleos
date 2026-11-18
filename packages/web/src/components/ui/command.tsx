@@ -34,12 +34,15 @@ function CommandDialog({
   children,
   className,
   showCloseButton = false,
+  filter,
   ...props
 }: React.ComponentProps<typeof Dialog> & {
   title?: string
   description?: string
   className?: string
   showCloseButton?: boolean
+  /** cmdk ranking function; defaults to cmdk's fuzzy score. */
+  filter?: React.ComponentProps<typeof CommandPrimitive>["filter"]
 }) {
   return (
     <Dialog {...props}>
@@ -54,7 +57,10 @@ function CommandDialog({
         )}
         showCloseButton={showCloseButton}
       >
-        {children}
+        {/* cmdk names its input through `label` (aria-labelledby wins over aria-label). */}
+        <Command label={title} filter={filter} className="[&_[cmdk-item]_svg]:size-4">
+          {children}
+        </Command>
       </DialogContent>
     </Dialog>
   )

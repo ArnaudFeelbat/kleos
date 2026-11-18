@@ -23,3 +23,6 @@ window.matchMedia ??= ((query: string) => ({
   removeListener() {},
   dispatchEvent: () => false,
 })) as unknown as typeof window.matchMedia;
+
+// cmdk scrolls the active item into view; jsdom has no layout.
+Element.prototype.scrollIntoView ??= function scrollIntoView() {};

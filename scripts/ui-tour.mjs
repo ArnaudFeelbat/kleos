@@ -298,8 +298,33 @@ try {
     await sleep(11000);
     await win.shot('12-monitor');
   });
-  await step('dark mode', async () => {
-    await win.call('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] });
+  const palette = async (query) => {
+    await win.click(`document.querySelector('button[aria-label="Open the command palette"]')`, 'Search button');
+    await win.waitFor(`!!document.querySelector('[cmdk-input]')`, 'palette input');
+    await win.type(query);
+    await sleep(400);
+  };
+  await step('command palette opens a table by name', async () => {
+    await palette('order_items');
+    await win.shot('13a-palette-search');
+    await win.key('Enter', 'Enter', 13);
+    await win.waitFor(
+      `document.body.innerText.includes('order_items') && ${visible('[role=gridcell]')}.length > 0`,
+      'order_items rows',
+      20000,
+    );
+    await sleep(600);
+    await win.shot('13b-palette-opened-table');
+  });
+  await step('dark mode from the palette', async () => {
+    await palette('appearance');
+    await win.shot('13c-palette-appearance');
+    await win.click(
+      `[...document.querySelectorAll('[cmdk-item]')].find((i) => i.textContent.includes('Appearance: Dark'))`,
+      'Appearance: Dark',
+    );
+    await win.waitFor(`document.documentElement.classList.contains('dark')`, 'dark class', 10000);
+    await win.click(`${visible('[role=tab]')}.find((t) => t.textContent.trim() === 'Monitor')`, 'Monitor tab');
     await sleep(800);
     await win.shot('13-dark-monitor');
     for (const [tab, name] of [

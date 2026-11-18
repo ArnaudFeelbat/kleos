@@ -54,9 +54,11 @@ import {
   cancelRunning,
   closeTab,
   getTab,
+  historyLoadsDirectly,
   isDirty,
   loadMore,
   openDraft,
+  openSavedQuery,
   runExplain,
   runQuery,
   setActiveTab,
@@ -113,6 +115,8 @@ export function QueryTab() {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [confirmClose, setConfirmClose] = useState<QueryTabState | null>(null);
   const [saveDialogFor, setSaveDialogFor] = useState<string | null>(null);
+  const [confirmHistory, setConfirmHistory] = useState<{ entry: HistoryEntry; tabId: string } | null>(null);
+  const openInNewTabRef = useRef<HTMLButtonElement>(null);
   const dragRef = useRef<{ startY: number; start: number } | null>(null);
 
   const draft = ws.queryDraft;
@@ -200,23 +204,17 @@ export function QueryTab() {
 
   // ---- side panel callbacks ----------------------------------------------------------
   const onLoadHistory = (h: HistoryEntry) => {
-    updateTab(sid, tab.id, (t) => ({ ...t, sql: h.sql }));
-    viewRef.current?.focus();
-  };
-  const onOpenSaved = (q: SavedQuery) => {
-    const open = qws.tabs.find((t) => t.saved?.id === q.id);
-    if (open) {
-      setActiveTab(sid, open.id);
-      return;
+    const current = viewRef.current ? viewRef.current.state.doc.toString() : tab.sql;
+    if (historyLoadsDirectly(current, h.sql)) {
+      updateTab(sid, tab.id, (t) => ({ ...t, sql: h.sql }));
+      viewRef.current?.focus();
+    } else {
+      setConfirmHistory({ entry: h, tabId: tab.id });
     }
-    addTab(sid, {
-      title: q.name,
-      sql: q.sql,
-      chart: q.chart,
-      view: q.chart ? 'chart' : 'results',
-      saved: { id: q.id, name: q.name, sql: q.sql, chart: q.chart },
-    });
   };
+  /** Set when the history dialog closes on Replace or Open in new tab: focus goes to the editor. */
+  const focusEditorOnClose = useRef(false);
+  const onOpenSaved = (q: SavedQuery) => openSavedQuery(sid, q);
   const onSavedChanged = (q: SavedQuery | { id: string; deleted: true }) => {
     for (const t of qws.tabs) {
       if (t.saved?.id !== q.id) continue;
@@ -553,6 +551,58 @@ export function QueryTab() {
               }}
             >
               Close tab
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={confirmHistory !== null} onOpenChange={(o) => !o && setConfirmHistory(null)}>
+        <AlertDialogContent
+          onOpenAutoFocus={(e) => {
+            // The safe choice keeps both: focus "Open in new tab" rather than Cancel.
+            e.preventDefault();
+            openInNewTabRef.current?.focus();
+          }}
+          onCloseAutoFocus={(e) => {
+            if (!focusEditorOnClose.current) return;
+            focusEditorOnClose.current = false;
+            e.preventDefault();
+            viewRef.current?.focus();
+          }}
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle>Replace the SQL in this tab?</AlertDialogTitle>
+            <AlertDialogDescription>
+              “{qws.tabs.find((t) => t.id === confirmHistory?.tabId)?.title ?? 'This tab'}” already holds other SQL.
+              Open the history entry in a new tab to keep it, or replace it.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {confirmHistory && (
+            <pre className="bg-muted/60 text-foreground/85 max-h-32 overflow-auto rounded-md px-3 py-2 font-mono text-xs whitespace-pre-wrap shadow-[inset_0_0_0_1px_var(--edge)]">
+              {confirmHistory.entry.sql}
+            </pre>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="outline"
+              onClick={() => {
+                if (!confirmHistory) return;
+                const { sql } = confirmHistory.entry;
+                updateTab(sid, confirmHistory.tabId, (t) => ({ ...t, sql }));
+                focusEditorOnClose.current = true;
+              }}
+            >
+              Replace
+            </AlertDialogAction>
+            <AlertDialogAction
+              ref={openInNewTabRef}
+              onClick={() => {
+                if (!confirmHistory) return;
+                addTab(sid, { sql: confirmHistory.entry.sql });
+                focusEditorOnClose.current = true;
+              }}
+            >
+              Open in new tab
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

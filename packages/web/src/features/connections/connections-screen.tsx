@@ -3,8 +3,7 @@ import { useState } from 'react';
 import { api, errorText, queryKeys } from '@/lib/api';
 import { ConnectionForm } from './connection-form';
 import { FavoritesList } from './favorites-list';
-import { PasswordDialog } from './password-dialog';
-import { useConnect } from './use-connect';
+import { useConnectActions } from './connect-context';
 
 /** `undefined` = nothing picked yet: show the first favorite, or a new form when there is none. */
 type Selection = { kind: 'new' } | { kind: 'saved'; id: string } | undefined;
@@ -16,7 +15,7 @@ type Selection = { kind: 'new' } | { kind: 'saved'; id: string } | undefined;
 export function ConnectionsScreen() {
   const favorites = useQuery({ queryKey: queryKeys.connections, queryFn: api.listConnections });
   const [selection, setSelection] = useState<Selection>(undefined);
-  const { connect, connectingId, prompt, submitPassword, cancelPrompt } = useConnect();
+  const { connect, connectingId } = useConnectActions();
 
   const list = favorites.data ?? [];
   const selectedId =
@@ -51,11 +50,6 @@ export function ConnectionsScreen() {
           />
         )}
       </main>
-      <PasswordDialog
-        prompt={prompt}
-        onSubmit={(password, remember) => void submitPassword(password, remember)}
-        onCancel={cancelPrompt}
-      />
     </div>
   );
 }

@@ -39,6 +39,8 @@ const bridge = {
   vibrancy: true,
   setTitle: vi.fn(),
   closeWindow: vi.fn(),
+  getAppearance: vi.fn(async () => 'system' as const),
+  setAppearance: vi.fn(),
   onCommand: vi.fn((listener: (command: ShellCommand) => void) => {
     send = listener;
     return () => {

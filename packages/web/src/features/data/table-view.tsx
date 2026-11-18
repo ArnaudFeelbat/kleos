@@ -18,6 +18,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import {
+  emptyGridLayout,
   tableKey,
   type CellValue,
   type Column,
@@ -37,6 +38,13 @@ import { classifyType, typeLabel, type CellKind } from '@/features/cells/classif
 import { Callout } from '@/features/common/callout';
 import { EmptyState } from '@/features/common/empty-state';
 import { GridSkeleton } from '@/features/common/skeletons';
+import {
+  displayOrder,
+  isEmptyLayout,
+  moveInLayout,
+  normalizeLayout,
+  resizeInLayout,
+} from '@/features/grid/column-layout';
 import { DataGrid } from '@/features/grid/data-grid';
 import { selectedRows, tabSelection } from '@/features/grid/selection';
 import type { CellPos, GridCell, GridColumn, GridRowMeta, GridSelection } from '@/features/grid/types';
@@ -44,6 +52,7 @@ import { ValueInspector } from '@/features/grid/value-inspector';
 import { api, ApiError, errorText, queryKeys } from '@/lib/api';
 import { FilterBar } from './filter-bar';
 import { chipsToFilters, foreignKeysByColumn, foreignKeyTarget, type FilterChip } from './filters';
+import { usePersistedGridLayout } from './grid-layout';
 import { PendingPanel } from './pending-panel';
 import { renderPendingSql } from './pending-sql';
 import {
@@ -61,6 +70,8 @@ const isMac = typeof navigator !== 'undefined' && /Mac/.test(navigator.platform)
 
 /** One column of the Data tab, merged from the page's ColumnMeta and the introspected Column. */
 type DataColumn = {
+  /** Index of the column in the page's rows (its natural position). */
+  source: number;
   meta: ColumnMeta;
   kind: CellKind;
   schema: Column | undefined;
@@ -73,6 +84,8 @@ type DataColumn = {
 
 export type TableViewProps = {
   sid: string;
+  /** Saved connection id, which the column layout is remembered under. */
+  connectionId: string;
   table: TableRef;
   /** Introspected table or view; undefined while the schema loads. */
   info: Table | undefined;
@@ -83,17 +96,40 @@ export type TableViewProps = {
   openTable(ref: TableRef): void;
 };
 
-/** Why editing is off for this table, or null when it is on. */
-export function editBlockReason(info: Table | undefined, readOnly: boolean): string | null {
-  if (readOnly) return 'Read-only connection: editing is off.';
-  if (!info) return null;
-  if (info.kind === 'view' || info.kind === 'materialized') return 'Views are read-only here; edit the base table.';
-  if (info.primaryKey.length === 0) return 'No primary key: rows can’t be identified safely, so editing is off.';
-  return null;
+/**
+ * What can be staged on a table: `insert` new rows, `modify` (update and delete) existing
+ * ones, and the one-line notice explaining what is off, or null when everything is on.
+ */
+export type EditAccess = { insert: boolean; modify: boolean; notice: string | null };
+
+export function editAccess(info: Table | undefined, readOnly: boolean): EditAccess {
+  if (readOnly) return { insert: false, modify: false, notice: 'Read-only connection: editing is off.' };
+  if (!info) return { insert: false, modify: false, notice: null };
+  if (info.kind === 'view' || info.kind === 'materialized') {
+    return { insert: false, modify: false, notice: 'Views are read-only here; edit the base table.' };
+  }
+  if (info.primaryKey.length === 0) {
+    // Without a key an existing row can't be targeted safely, but an INSERT needs no key.
+    return {
+      insert: true,
+      modify: false,
+      notice: 'No primary key: you can add rows, but not edit or delete existing ones.',
+    };
+  }
+  return { insert: true, modify: true, notice: null };
 }
 
 /** Rows of one table: paging, sorting, filters, type-aware cells and staged edits. */
-export function TableView({ sid, table, info, schemaModel, readOnly, active, openTable }: TableViewProps) {
+export function TableView({
+  sid,
+  connectionId,
+  table,
+  info,
+  schemaModel,
+  readOnly,
+  active,
+  openTable,
+}: TableViewProps) {
   const queryClient = useQueryClient();
   const tk = tableKey(table);
   const [view, update] = useTableView(sid, tk);
@@ -141,7 +177,7 @@ export function TableView({ sid, table, info, schemaModel, readOnly, active, ope
   // ---- columns ------------------------------------------------------------------
   const page = rowsQuery.data;
   const serverRows = useMemo(() => page?.rows ?? [], [page]);
-  const columns = useMemo<DataColumn[]>(() => {
+  const naturalColumns = useMemo<DataColumn[]>(() => {
     const metas: ColumnMeta[] =
       page?.columns ??
       info?.columns.map((c) => ({
@@ -155,12 +191,13 @@ export function TableView({ sid, table, info, schemaModel, readOnly, active, ope
     const byName = new Map(info?.columns.map((c) => [c.name, c]));
     const fks = foreignKeysByColumn(schemaModel, table);
     const pk = new Set(info?.primaryKey ?? []);
-    return metas.map((meta) => {
+    return metas.map((meta, source) => {
       const schemaCol = byName.get(meta.name);
       const kind = classifyType(meta);
       const enumValues =
         schemaCol?.enumValues ?? schemaModel?.enums.find((e) => e.name === meta.typeName)?.values ?? undefined;
       return {
+        source,
         meta,
         kind,
         schema: schemaCol,
@@ -171,21 +208,51 @@ export function TableView({ sid, table, info, schemaModel, readOnly, active, ope
       };
     });
   }, [page?.columns, info, schemaModel, table]);
+
+  // ---- column layout (order and widths, remembered per connection and table) -------
+  // From here on `columns` and every column index (selection, getCell, colIndex) are in
+  // display order; raw page rows are read through each column's `source`.
+  const persisted = usePersistedGridLayout(connectionId, table);
+  const columnNames = useMemo(() => naturalColumns.map((c) => c.meta.name), [naturalColumns]);
+  const layout = useMemo(() => normalizeLayout(persisted.layout, columnNames), [persisted.layout, columnNames]);
+  const columns = useMemo(
+    () => displayOrder(columnNames, layout.order).map((i) => naturalColumns[i]!),
+    [columnNames, layout.order, naturalColumns],
+  );
+  const changeLayout = persisted.change;
+  const onColumnMove = useCallback(
+    (from: number, to: number) => changeLayout(moveInLayout(layout, columnNames, from, to)),
+    [changeLayout, layout, columnNames],
+  );
+  const onColumnResize = useCallback(
+    (key: string, width: number | null) => changeLayout(resizeInLayout(layout, key, width)),
+    [changeLayout, layout],
+  );
+  const onResetColumns = useCallback(() => changeLayout(emptyGridLayout), [changeLayout]);
+
   const colIndex = useMemo(() => new Map(columns.map((c, i) => [c.meta.name, i])), [columns]);
+  const sourceOf = useMemo(() => new Map(naturalColumns.map((c) => [c.meta.name, c.source])), [naturalColumns]);
   const typeInfo = useMemo(() => Object.fromEntries(columns.map((c) => [c.meta.name, c.meta])), [columns]);
 
-  const blockReason = editBlockReason(info, readOnly);
+  const access = editAccess(info, readOnly);
   const pkNames = useMemo(() => info?.primaryKey ?? [], [info]);
-  const canEditTable = !blockReason && !!info && pkNames.every((c) => colIndex.has(c));
+  /** Existing rows can be updated and deleted (needs every key column on the page). */
+  const canModifyRows = access.modify && !!info && pkNames.every((c) => colIndex.has(c));
+  /** New rows can be staged (tables without a primary key included). */
+  const canInsertRows = access.insert && !!info;
 
   // ---- staged edits over the page -------------------------------------------------
   const rowObject = useCallback(
-    (row: readonly CellValue[]) => Object.fromEntries(columns.map((c, i) => [c.meta.name, row[i] ?? null])),
+    (row: readonly CellValue[]) => Object.fromEntries(columns.map((c) => [c.meta.name, row[c.source] ?? null])),
     [columns],
   );
+  const keyValuesOf = useCallback(
+    (row: readonly CellValue[]) => Object.fromEntries(pkNames.map((p) => [p, row[sourceOf.get(p)!] ?? null])),
+    [pkNames, sourceOf],
+  );
   const rowKeys = useMemo(
-    () => (canEditTable ? serverRows.map((r) => rowKeyOf(pkNames, rowObject(r))) : []),
-    [canEditTable, serverRows, pkNames, rowObject],
+    () => (canModifyRows ? serverRows.map((r) => rowKeyOf(pkNames, rowObject(r))) : []),
+    [canModifyRows, serverRows, pkNames, rowObject],
   );
   const updatesByKey = useMemo(() => new Map<string, StagedUpdate>(stage.updates.map((u) => [u.rowKey, u])), [stage]);
   const deleted = useMemo(() => new Set(stage.deletes.map((d) => d.rowKey)), [stage]);
@@ -239,7 +306,7 @@ export function TableView({ sid, table, info, schemaModel, readOnly, active, ope
       const err = stage.error;
       if (i < serverRows.length) {
         const row = serverRows[i]!;
-        const original = row[c] ?? null;
+        const original = row[col.source] ?? null;
         const rk = rowKeys[i];
         const upd = rk === undefined ? undefined : updatesByKey.get(rk);
         const changed = !!upd && name in upd.set;
@@ -269,14 +336,14 @@ export function TableView({ sid, table, info, schemaModel, readOnly, active, ope
 
   const canEdit = useCallback(
     (pos: CellPos) => {
-      if (!canEditTable) return false;
       const col = columns[pos.col];
       if (!col?.updatable) return false;
-      if (pos.row >= serverRows.length) return true;
+      if (pos.row >= serverRows.length) return canInsertRows;
+      if (!canModifyRows) return false;
       const rk = rowKeys[pos.row];
       return rk !== undefined && !deleted.has(rk);
     },
-    [canEditTable, columns, serverRows.length, rowKeys, deleted],
+    [canInsertRows, canModifyRows, columns, serverRows.length, rowKeys, deleted],
   );
 
   // ---- editing ----------------------------------------------------------------------
@@ -295,14 +362,13 @@ export function TableView({ sid, table, info, schemaModel, readOnly, active, ope
     if (result.type === 'default') return;
     const row = serverRows[pos.row]!;
     const rk = rowKeys[pos.row]!;
-    const keyValues = Object.fromEntries(pkNames.map((p) => [p, row[colIndex.get(p)!] ?? null]));
     dispatch({
       type: 'setCell',
       rowKey: rk,
-      key: keyValues,
+      key: keyValuesOf(row),
       column: col.meta.name,
       value: result.value,
-      original: row[pos.col] ?? null,
+      original: row[col.source] ?? null,
     });
   };
 
@@ -364,9 +430,13 @@ export function TableView({ sid, table, info, schemaModel, readOnly, active, ope
     selectedServerKeys.length > 0 &&
     selectedServerKeys.every((k) => deleted.has(k)) &&
     rowsInSelection.every((r) => r < serverRows.length);
+  /** Rows a Delete would act on: any row, or only new rows when existing ones can't be modified. */
+  const deletableRows = (rows: number[]) => (canModifyRows ? rows : rows.filter((r) => r >= serverRows.length));
+  const deletableInSelection = deletableRows(rowsInSelection);
 
-  const deleteRows = (rows: number[]) => {
-    if (!canEditTable || rows.length === 0) return;
+  const deleteRows = (picked: number[]) => {
+    const rows = deletableRows(picked);
+    if (!canInsertRows || rows.length === 0) return;
     const keys = rows.filter((r) => r < serverRows.length).map((r) => rowKeys[r]!);
     if (keys.length > 0 && keys.every((k) => deleted.has(k)) && rows.every((r) => r < serverRows.length)) {
       dispatch({ type: 'restoreRows', rowKeys: keys });
@@ -374,13 +444,7 @@ export function TableView({ sid, table, info, schemaModel, readOnly, active, ope
     }
     const toDelete = rows
       .filter((r) => r < serverRows.length && !deleted.has(rowKeys[r]!))
-      .map((r) => {
-        const row = serverRows[r]!;
-        return {
-          rowKey: rowKeys[r]!,
-          key: Object.fromEntries(pkNames.map((p) => [p, row[colIndex.get(p)!] ?? null])),
-        };
-      });
+      .map((r) => ({ rowKey: rowKeys[r]!, key: keyValuesOf(serverRows[r]!) }));
     if (toDelete.length > 0) dispatch({ type: 'deleteRows', rows: toDelete });
     const insertIds = rows.filter((r) => r >= serverRows.length).map((r) => stage.inserts[r - serverRows.length]!.id);
     if (insertIds.length > 0) {
@@ -484,7 +548,7 @@ export function TableView({ sid, table, info, schemaModel, readOnly, active, ope
       <ValueInspector
         key={`${focus.row}:${focus.col}`}
         columnName={focusCol.meta.name}
-        subtitle={inspectorSubtitle(focusCol, focus.row, serverRows, pkNames, colIndex, offset)}
+        subtitle={inspectorSubtitle(focusCol, focus.row, serverRows, pkNames, sourceOf, offset)}
         kind={focusCol.kind}
         value={getCell(focus.row, focus.col).value}
         onClose={() => setInspectorOpen(false)}
@@ -552,7 +616,7 @@ export function TableView({ sid, table, info, schemaModel, readOnly, active, ope
         {canEdit(pos) && (col.schema?.nullable ?? true) && (
           <ContextMenuItem onSelect={() => applyEdit(pos, { type: 'value', value: null })}>Set null</ContextMenuItem>
         )}
-        {canEditTable && (
+        {canInsertRows && deletableRows(selection ? rowsInSelection : [pos.row]).length > 0 && (
           <ContextMenuItem variant="destructive" onSelect={() => deleteRows(selection ? rowsInSelection : [pos.row])}>
             {allSelectedDeleted ? 'Restore rows' : 'Delete rows'}
           </ContextMenuItem>
@@ -588,17 +652,17 @@ export function TableView({ sid, table, info, schemaModel, readOnly, active, ope
           <ChevronRight className="text-muted-foreground/60 -mx-1 size-3.5 shrink-0" aria-hidden="true" />
           <b className="truncate font-semibold tracking-[-0.01em]">{table.name}</b>
         </div>
-        {blockReason && (
+        {access.notice && (
           <span
-            className="bg-muted/70 text-muted-foreground ml-1 inline-flex h-6 items-center gap-1.5 rounded-full px-2.5 text-xs shadow-[inset_0_0_0_1px_var(--edge)]"
+            className="bg-muted/70 text-muted-foreground ml-1 inline-flex min-h-6 items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs shadow-[inset_0_0_0_1px_var(--edge)]"
             role="note"
           >
-            <Lock className="size-3" aria-hidden="true" />
-            {blockReason}
+            <Lock className="size-3 shrink-0" aria-hidden="true" />
+            {access.notice}
           </span>
         )}
         <span className="flex-1" />
-        {canEditTable && (
+        {canInsertRows && (
           <>
             <Button type="button" variant="outline" size="sm" onClick={addRow}>
               <Plus aria-hidden="true" />
@@ -610,7 +674,7 @@ export function TableView({ sid, table, info, schemaModel, readOnly, active, ope
                   type="button"
                   variant="outline"
                   size="sm"
-                  disabled={rowsInSelection.length === 0}
+                  disabled={deletableInSelection.length === 0}
                   onClick={() => deleteRows(rowsInSelection)}
                 >
                   {allSelectedDeleted ? <Undo2 aria-hidden="true" /> : <Trash aria-hidden="true" />}
@@ -618,8 +682,12 @@ export function TableView({ sid, table, info, schemaModel, readOnly, active, ope
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                {allSelectedDeleted ? 'Restore the selected rows' : 'Stage deleting the selected rows'} (⌫ on a row
-                selection)
+                {allSelectedDeleted
+                  ? 'Restore the selected rows'
+                  : canModifyRows
+                    ? 'Stage deleting the selected rows'
+                    : 'Remove the selected new rows'}{' '}
+                (⌫ on a row selection)
               </TooltipContent>
             </Tooltip>
           </>
@@ -650,7 +718,7 @@ export function TableView({ sid, table, info, schemaModel, readOnly, active, ope
       </div>
 
       <FilterBar
-        columns={columns.map((c) => ({ name: c.meta.name, kind: c.kind }))}
+        columns={naturalColumns.map((c) => ({ name: c.meta.name, kind: c.kind }))}
         chips={view.chips}
         onChipsChange={setChips}
         where={view.where}
@@ -667,7 +735,8 @@ export function TableView({ sid, table, info, schemaModel, readOnly, active, ope
               )}
             </Callout>
           </div>
-        ) : loading && columns.length === 0 ? (
+        ) : (loading && columns.length === 0) || !persisted.ready ? (
+          // Briefly held while the remembered layout loads, so columns don't jump after drawing.
           <GridSkeleton label="Loading rows" />
         ) : (
           <DataGrid
@@ -687,8 +756,13 @@ export function TableView({ sid, table, info, schemaModel, readOnly, active, ope
             editing={editing}
             onEditRequest={setEditing}
             renderEditor={renderEditor}
-            onDeleteRows={canEditTable ? deleteRows : undefined}
+            onDeleteRows={canInsertRows ? deleteRows : undefined}
             contextMenuExtra={contextMenuExtra}
+            columnWidths={layout.widths}
+            onColumnResize={onColumnResize}
+            onColumnMove={onColumnMove}
+            onResetColumns={onResetColumns}
+            columnsCustomized={!isEmptyLayout(layout)}
             className={rowsQuery.isPlaceholderData ? 'opacity-60' : undefined}
             emptyState={
               loading ? (
@@ -707,7 +781,7 @@ export function TableView({ sid, table, info, schemaModel, readOnly, active, ope
                 <EmptyState
                   icon={Rows3}
                   title="This table is empty."
-                  hint={canEditTable ? `Add row stages an INSERT; ${isMac ? '⌘S' : 'Ctrl+S'} commits it.` : undefined}
+                  hint={canInsertRows ? `Add row stages an INSERT; ${isMac ? '⌘S' : 'Ctrl+S'} commits it.` : undefined}
                   className="p-2"
                 />
               )
@@ -826,14 +900,14 @@ function inspectorSubtitle(
   row: number,
   serverRows: readonly (readonly CellValue[])[],
   pk: readonly string[],
-  colIndex: Map<string, number>,
+  sourceOf: Map<string, number>,
   offset: number,
 ): string {
   const type = typeLabel(col.meta);
   if (row >= serverRows.length) return `${type} · new row`;
   const values = serverRows[row]!;
   if (pk.length === 1) {
-    const v = values[colIndex.get(pk[0]!) ?? -1];
+    const v = values[sourceOf.get(pk[0]!) ?? -1];
     if (v !== undefined) return `${type} · row ${pk[0]} ${v ?? 'NULL'}`;
   }
   return `${type} · row ${offset + row + 1}`;

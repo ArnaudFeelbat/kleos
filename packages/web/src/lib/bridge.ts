@@ -1,6 +1,9 @@
 /** Window commands sent by the main process from the native menu. */
 export type ShellCommand =
-  'new-tab' | 'close-tab' | 'next-tab' | 'prev-tab' | `select-tab-${1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9}`;
+  'new-tab' | 'close-tab' | 'next-tab' | 'prev-tab' | 'palette' | `select-tab-${1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9}`;
+
+/** System follows macOS; Light and Dark override it. Remembered by the main process. */
+export type Appearance = 'system' | 'light' | 'dark';
 
 /** What the Electron preload exposes on window.kleos. */
 export type KleosBridge = {
@@ -15,6 +18,9 @@ export type KleosBridge = {
   setTitle(title: string): void;
   /** Closes the window (⌘W on the Connections tab). */
   closeWindow(): void;
+  getAppearance(): Promise<Appearance>;
+  /** Applies and remembers the appearance; the page follows through prefers-color-scheme. */
+  setAppearance(mode: Appearance): void;
   /** Subscribes to menu commands; returns the unsubscribe function. */
   onCommand(listener: (command: ShellCommand) => void): () => void;
 };
