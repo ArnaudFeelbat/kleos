@@ -123,7 +123,11 @@ Behavior:
 
 - Localhost only. The server binds to 127.0.0.1 and requires a random per-launch token on every request, since it holds live database sessions.
 
-SSH tunnel (SSH host, user, key file) is planned for v1.1, using the ssh2 library to forward a local port.
+- SSH tunnel (since 0.4). "Connect through SSH": SSH host, port, user, and either the SSH agent (SSH_AUTH_SOCK) or a private key file with an optional passphrase (Keychain account `<id>:ssh`). Each session opens one ssh2 client and a local forwarder on 127.0.0.1; Host and Port are then the database as seen from the SSH server, and verify-full still checks the database's real host name. Host keys are trusted on first use (the fingerprint is shown, SHA256) and stored in app.db; a changed key is refused, and replacing it takes a deliberate second confirmation (like ssh-keygen -R). A dropped tunnel fails the next call fast with an error naming the tunnel.
+
+- CA certificate (since 0.4). For require and verify-full, an optional CA file replaces the system CAs: verify-full checks chain and host name, require checks the chain only (libpq's verify-ca). Test connection reports whether TLS was used.
+
+- Restored window (since 0.4). The open server tabs, the front tab, each server's query tabs (title, SQL, chart, linked saved query) and workspace tab are saved in app.db and reopened on launch; servers whose credentials aren't in the Keychain wait in a reconnect state.
 
 ## Adapter contract
 
@@ -415,4 +419,10 @@ Automated tests run against a throwaway Postgres in Docker, seeded with one tabl
 
 - Tables without a primary key: read-only in v0.1–0.2; since 0.3 inserts are allowed, updates and deletes are not; never editing through ctid.
 
-- SSH tunnel: v1.1, on the assumption that the first target databases are directly reachable.
+- SSH tunnel: planned for v1.1, shipped in 0.4 (ssh2, local forwarder, trust on first use).
+
+- Export (0.4): runs on the local server, which writes the file picked in the native save dialog; streamed through a cursor inside BEGIN READ ONLY (a statement with side effects fails), to a .kleos-partial file renamed on success. CSV is RFC 4180 with a UTF-8 BOM and LF; JSON keeps int8 and numeric as strings; Excel stops at 1,048,575 rows.
+
+- Import (0.4): CSV/TSV only, into ordinary or partitioned tables, never on read-only favorites; one transaction of batched parameterized inserts, so a failure names the file line and column and nothing is imported. Unmapped columns take their default; empty cells are NULL. It runs as its own job, not mixed into staged edits.
+
+- Read-only and remote writes (0.4): postgres_fdw writes are refused on read-only sessions (tested); dblink_exec cannot be blocked, so the workspace shows a "dblink" notice when the extension is installed.

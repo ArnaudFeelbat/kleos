@@ -1,5 +1,66 @@
 # Nouveautés de Kleos
 
+## Version 0.4.0 — 19 novembre 2026
+
+### Se connecter partout
+
+- **Tunnel SSH.** Dans une connexion, activez « Connect through SSH » pour passer par un
+  serveur intermédiaire (bastion). Deux façons de s'authentifier :
+  - « SSH agent » : les clés déjà chargées sur votre Mac (`ssh-add`) ;
+  - « Key file » : un fichier de clé privée, choisi avec « Choose… ». Si la clé est
+    protégée, sa phrase de passe peut être gardée dans le trousseau macOS (« Remember in
+    Keychain »).
+- **Sécurité du serveur SSH.** À la première connexion, Kleos affiche l'empreinte du
+  serveur (« Trust this server? ») : vérifiez-la, puis « Trust and connect ». Si cette
+  empreinte change un jour, Kleos refuse de se connecter et vous prévient. Si vous savez
+  pourquoi (serveur réinstallé), « Replace the trusted key… » permet de faire confiance à la
+  nouvelle, après une seconde confirmation.
+- **Certificat d'autorité (CA).** En SSL `require` ou `verify-full`, vous pouvez indiquer
+  votre propre certificat (« CA certificate »), par exemple celui de votre hébergeur.
+  « Test connection » indique désormais clairement si la connexion est chiffrée et si elle
+  passe par SSH.
+
+### Exporter et importer
+
+- **Export en CSV, JSON ou Excel.** Le bouton « Export… » de l'onglet Données exporte
+  toute la table, avec vos filtres et votre tri, et pas seulement la page affichée. Le même
+  bouton, à côté de « Copy as CSV », exporte le résultat complet d'une requête (elle est
+  relancée pour l'occasion). Pour le CSV, « CSV options » permet de choisir le séparateur
+  (virgule, point-virgule, tabulation) et la ligne d'en-tête.
+- **Rapide, même sur de très grosses tables.** L'export s'écrit directement sur le disque,
+  ligne après ligne : un million de lignes ne fait pas gonfler la mémoire. Une notification
+  suit l'avancement ; vous pouvez l'annuler ou, une fois fini, cliquer sur « Show in Finder ».
+- **Import CSV.** « Import CSV… » ouvre un aperçu du fichier :
+  - le séparateur est détecté tout seul (modifiable) ;
+  - « First row is a header » indique si la première ligne contient les noms de colonnes ;
+  - chaque colonne du fichier est associée à une colonne de la table (automatiquement quand
+    les noms correspondent) ;
+  - « Treat as NULL » précise quelles valeurs signifient « vide » ;
+  - un aperçu montre les premières lignes telles qu'elles arriveront dans la table.
+- **Tout ou rien.** L'import se fait en une seule fois : si une ligne pose problème, rien
+  n'est importé, et Kleos vous dit laquelle (« line 1204 ») et quelle colonne. L'import est
+  désactivé sur les connexions en lecture seule.
+
+### Reprendre là où vous en étiez
+
+- Quand vous relancez Kleos, vos serveurs rouvrent dans leurs onglets, avec leurs requêtes
+  en cours et l'onglet sur lequel vous étiez.
+- Si un mot de passe n'est pas enregistré dans le trousseau, l'onglet l'indique
+  calmement : un clic sur « Connect » suffit.
+
+### Petites améliorations
+
+- **En-têtes de colonnes au clavier.** Depuis la première ligne, la flèche ↑ mène aux
+  en-têtes ; ← et → passent de l'un à l'autre, Entrée trie, ⌥← et ⌥→ déplacent la colonne.
+- **Plus de colonnes qui sautent.** À l'ouverture d'une table, la disposition mémorisée
+  s'applique tout de suite ; si elle arrive en retard, elle ne bouscule plus ce que vous
+  avez déjà modifié.
+- **Lecture seule : un point d'attention signalé.** Si l'extension `dblink` est installée
+  sur la base, un badge « dblink » le signale à côté de « Read-only » : `dblink` peut écrire
+  sur d'autres serveurs, ce que la lecture seule ne peut pas empêcher.
+
+---
+
 ## Version 0.3.0 — 18 novembre 2026
 
 ### Tout trouver avec ⌘K

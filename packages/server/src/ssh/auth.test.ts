@@ -79,7 +79,14 @@ describe('SSH credentials', () => {
   });
 
   it('decrypts with the right passphrase', async () => {
-    expect(await resolveSshCredentials(keyConfig(encrypted.privatePath), 'right horse', undefined)).toEqual({
+    // Intermittent under the full suite only (2 of ~6 runs, never alone): surface ssh2's own
+    // parse error, kept in the KleosError's detail, if it fails again.
+    const resolved = await resolveSshCredentials(keyConfig(encrypted.privatePath), 'right horse', undefined).catch(
+      (err: unknown) => {
+        throw new Error(`unexpected failure: ${JSON.stringify(err instanceof KleosError ? err.body : String(err))}`);
+      },
+    );
+    expect(resolved).toEqual({
       privateKey: expect.any(Buffer),
       passphrase: 'right horse',
     });
