@@ -151,7 +151,7 @@ export class PostgresSession implements Session {
     try {
       return await run();
     } catch (err) {
-      throw this.tunnel ? this.tunnel.explain(err) : err;
+      throw this.tunnel ? await this.tunnel.explain(err) : err;
     }
   }
 
