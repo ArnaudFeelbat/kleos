@@ -93,6 +93,11 @@ export const OpenSessionRequest = z.object({
   sshPassphrase: z.string().nullable().optional(),
   /** Accept and remember this SSH host key fingerprint (after KLEOS_SSH_HOST_UNKNOWN). */
   trustSshFingerprint: z.string().optional(),
+  /**
+   * Settings › Query timeout, sent as the session's statement_timeout (0 or absent: none). A
+   * statement may still SET its own. (0.5)
+   */
+  statementTimeoutSeconds: z.number().int().min(0).max(86_400).optional(),
 });
 export type OpenSessionRequest = z.infer<typeof OpenSessionRequest>;
 

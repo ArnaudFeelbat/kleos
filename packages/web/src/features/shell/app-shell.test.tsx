@@ -1,3 +1,5 @@
+import { defaultSettings } from '@kleos/shared';
+import { idleUpdateState } from '@/test/bridge-defaults';
 import { emptyWindowState, kleosErrorCodes } from '@kleos/shared';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -51,6 +53,16 @@ const bridge = {
   saveFileDialog: vi.fn(async () => null),
   openFileDialog: vi.fn(async () => null),
   revealInFinder: vi.fn(),
+  appVersion: '0.5.0',
+  windowKind: 'main' as const,
+  getSettings: vi.fn(async () => defaultSettings),
+  updateSettings: vi.fn(async () => defaultSettings),
+  onSettingsChanged: vi.fn(() => () => {}),
+  openSettings: vi.fn(),
+  getUpdateState: vi.fn(async () => idleUpdateState),
+  checkForUpdates: vi.fn(async () => idleUpdateState),
+  onUpdateState: vi.fn(() => () => {}),
+  openReleasePage: vi.fn(),
   onCommand: vi.fn((listener: (command: ShellCommand) => void) => {
     send = listener;
     return () => {
