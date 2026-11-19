@@ -10,7 +10,7 @@ Browse your schema as a diagram, edit rows safely, query with charts and explain
 and watch your server live — one window, one tab per server.
 
 [![CI](https://github.com/ArnaudFeelbat/kleos/actions/workflows/ci.yml/badge.svg)](https://github.com/ArnaudFeelbat/kleos/actions/workflows/ci.yml)
-![Version](https://img.shields.io/badge/version-0.3.0-2370d4)
+![Version](https://img.shields.io/badge/version-0.4.0-2370d4)
 ![macOS](https://img.shields.io/badge/macOS-Apple%20silicon-111?logo=apple&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-12%2B-336791?logo=postgresql&logoColor=white)
 ![Electron](https://img.shields.io/badge/Electron-45-47848f?logo=electron&logoColor=white)
@@ -42,6 +42,13 @@ and watch your server live — one window, one tab per server.
   Postgres points.
 - **Live monitoring.** Sessions, locks and who blocks whom, throughput, cache hit ratio,
   table health, index usage and slow queries — cancel or terminate a backend in two clicks.
+- **Any server, any route.** Connect through an SSH tunnel (ssh-agent or a key file), or
+  over TLS checked against your own CA. Kleos trusts an SSH host on first use and refuses
+  it if its key changes.
+- **Data in, data out.** Export a filtered table or a query's full result to CSV, JSON or
+  Excel, streamed straight to disk. Import a CSV with a preview and column mapping, in one
+  transaction — a bad line is named, and nothing is half-imported.
+- **Pick up where you left off.** Relaunch and your servers and query tabs come back.
 - **Read-only that means it.** Read-only favorites are enforced by Postgres itself; nothing
   typed in the editor can turn writes back on.
 - **Made for macOS.** Translucent sidebar, light and dark appearance (or follow the
@@ -93,9 +100,11 @@ Requires macOS on Apple silicon and PostgreSQL 12 or later.
 - Everything stays on your Mac. Kleos talks only to the databases you connect to.
 - The app runs a small API server on `127.0.0.1` for its own window, protected by a random
   token generated at each launch and a Host check.
-- Passwords live in the **macOS Keychain** (service `kleos`), never in Kleos's own files.
-  Favorites, layouts, history and saved queries are in
-  `~/Library/Application Support/Kleos/app.db`.
+- Passwords and SSH key passphrases live in the **macOS Keychain** (service `kleos`), never
+  in Kleos's own files. Favorites, layouts, history, saved queries, open tabs and trusted
+  SSH host keys are in `~/Library/Application Support/Kleos/app.db`.
+- Exports are written only to the file you pick in the save dialog; imports read only the
+  file you pick.
 - SQL is never built from your input: identifiers are quoted and values sent as
   parameters. The raw `WHERE` box and the query editor run exactly what you type — on
   read-only favorites inside a read-only transaction.
@@ -152,7 +161,6 @@ artboards in [docs/design](docs/design).
 
 Ideas for the next releases — subject to change:
 
-- **0.4** — SSH tunnels, tabs restored on relaunch, export (CSV / JSON / Excel) and CSV import
 - Signed and notarized builds with automatic updates
 - Schema diff between two open servers · schema editing with SQL preview
 - SQL formatting, query parameters, “Run all”

@@ -3,6 +3,10 @@ packages:
   - packages/*
 # electron-builder packs native modules most reliably from a flat node_modules
 nodeLinker: hoisted
+# ssh2's optional CPU-feature probe: not needed, and electron-builder can't rebuild it
+# without its (disabled) install script.
+ignoredOptionalDependencies:
+  - cpu-features
 allowBuilds:
   better-sqlite3: true
   electron: true
