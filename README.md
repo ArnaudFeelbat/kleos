@@ -69,6 +69,10 @@ and watch your server live — one window, one tab per server.
     <td><img src="docs/screenshots/explain.jpg" alt="An EXPLAIN ANALYZE plan as a tree with self-time bars" /><br /><sub><b>Explain</b> — the plan as a tree, with self time per node.</sub></td>
     <td><img src="docs/screenshots/connections.jpg" alt="The connections screen with saved favorites" /><br /><sub><b>Connections</b> — paste a <code>postgres://</code> URL to fill the form.</sub></td>
   </tr>
+  <tr>
+    <td><img src="docs/screenshots/export-menu.jpg" alt="The Export menu on a table: CSV, JSON or Excel workbook" /><br /><sub><b>Export</b> — every matching row to CSV, JSON or Excel, streamed to disk.</sub></td>
+    <td><img src="docs/screenshots/import-csv.jpg" alt="The Import CSV dialog with column mapping and a preview" /><br /><sub><b>Import CSV</b> — map columns, preview, then one transaction.</sub></td>
+  </tr>
 </table>
 
 ## Install
@@ -82,18 +86,19 @@ Requires macOS on Apple silicon and PostgreSQL 12 or later.
 
 ## Keyboard shortcuts
 
-| Shortcut  | Action                                               |
-| --------- | ---------------------------------------------------- |
-| ⌘K        | Command palette                                      |
-| ⌘T        | Connections (open another server)                    |
-| ⌘W        | Close the current tab                                |
-| ⌘1 … ⌘9   | Go to a server tab (⌘9 = last)                       |
-| ⌘⇧] / ⌘⇧[ | Next / previous tab                                  |
-| ⌘⇧L       | Toggle light / dark                                  |
-| ⌘↵        | Run the selection, or the statement under the cursor |
-| ⌘E        | Explain                                              |
-| ⌘S        | Commit staged edits (Data) · Save the query (Query)  |
-| ⌥← / ⌥→   | Move the selected column                             |
+| Shortcut      | Action                                               |
+| ------------- | ---------------------------------------------------- |
+| ⌘K            | Command palette                                      |
+| ⌘T            | Connections (open another server)                    |
+| ⌘W            | Close the current tab                                |
+| ⌘1 … ⌘9       | Go to a server tab (⌘9 = last)                       |
+| ⌘⇧] / ⌘⇧[     | Next / previous tab                                  |
+| ⌘⇧L           | Toggle light / dark                                  |
+| ⌘↵            | Run the selection, or the statement under the cursor |
+| ⌘E            | Explain                                              |
+| ⌘S            | Commit staged edits (Data) · Save the query (Query)  |
+| ⌥← / ⌥→       | Move the selected column                             |
+| ↑ (first row) | Focus the column headers: ←/→ to move, Enter to sort |
 
 ## Privacy and security
 
@@ -136,14 +141,17 @@ profile, so your installed Kleos is never touched).
 flowchart LR
   subgraph App["Kleos.app (Electron)"]
     UI["Window · React<br/>shadcn/ui, TanStack, React Flow,<br/>CodeMirror, Recharts"]
-    Main["Main process<br/>menus, appearance, windows"]
+    Main["Main process<br/>menus, appearance, native dialogs"]
     Server["Local API · Hono on 127.0.0.1<br/>per-launch token"]
     Main --- Server
     UI -- "typed client (Zod)" --> Server
   end
   Server -- "adapter (pg, pg-cursor)" --> PG[("PostgreSQL")]
+  Server -.->|"SSH tunnel (ssh2), optional"| Bastion["SSH host"]
+  Bastion -.-> PG
   Server --> DB[("app.db · SQLite")]
   Server --> KC["macOS Keychain"]
+  Server --> Files["Export / import files<br/>(the ones you pick)"]
 ```
 
 | Path              | What it is                                                            |
@@ -159,11 +167,16 @@ artboards in [docs/design](docs/design).
 
 ## Roadmap
 
-Ideas for the next releases — subject to change:
+Kleos ships as a `.dmg` on GitHub Releases, never through the Mac App Store. The plan to 1.0,
+one theme per release — subject to change:
 
-- Signed and notarized builds with automatic updates
-- Schema diff between two open servers · schema editing with SQL preview
-- SQL formatting, query parameters, “Run all”
+- **0.5 · Share** — a DMG anyone can open (first-open guide, or signed and notarized with a
+  Developer ID), new-version notice, SHA-256 checksums, an Intel build, a Settings window
+- **0.6 · Schema** — diff two open servers, schema editing with a SQL preview, diagram export
+- **0.7 · Query** — “Run all”, query parameters, formatter and snippets, searchable history
+- **0.8 · Insight** — plans explained in plain language, monitoring alerts and trends
+- **0.9 · Polish** — keyboard and VoiceOver audit, a French interface, performance budgets in CI
+- **1.0** — first-run guide, stability freeze, documentation, and the 1.0 DMG
 
 ## Changelog
 
