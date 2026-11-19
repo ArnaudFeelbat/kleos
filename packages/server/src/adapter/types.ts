@@ -33,7 +33,7 @@ export interface DatabaseAdapter {
   test(config: ConnectionConfig, password: string | null, options?: ConnectOptions): Promise<TestConnectionResult>;
 }
 
-/** What a favorite with an SSH tunnel needs besides its config and password. (0.4) */
+/** What a session needs besides its config and password: the SSH tunnel's (0.4), the timeout (0.5). */
 export type ConnectOptions = {
   /** SSH key passphrase, from the request or the Keychain. */
   sshPassphrase?: string | null;
@@ -41,6 +41,11 @@ export type ConnectOptions = {
   trustSshFingerprint?: string;
   /** Trusted SSH host keys; required when the favorite has an SSH tunnel. */
   knownHosts?: KnownHosts;
+  /**
+   * Settings › Query timeout (0.5): the session's statement_timeout in seconds, sent at startup
+   * to the pool and every per-tab client. 0 or absent: no timeout. test() ignores it.
+   */
+  statementTimeoutSeconds?: number;
 };
 
 /** Something the user should know about a session, shown when it opens. (0.4) */

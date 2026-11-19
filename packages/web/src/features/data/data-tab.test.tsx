@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -19,6 +19,7 @@ import type * as apiModule from '@/lib/api';
 import { api, ApiError } from '@/lib/api';
 import { resetExportOptions } from '@/features/jobs/export-menu';
 import { stopJobPolling } from '@/features/jobs/job-runner';
+import { mockBridge } from '@/test/bridge-defaults';
 import { DataTab } from './data-tab';
 import { getTableView, resetTableViews, updateTableView } from './table-state';
 
@@ -853,5 +854,44 @@ describe('DataTab export and import', () => {
     await screen.findByText('100512');
     expect(screen.getByRole('button', { name: 'Import CSV…' })).toBeDisabled();
     expect(screen.getByRole('button', { name: /Export/ })).toBeEnabled();
+  });
+});
+
+describe('DataTab — rows per page from Settings (0.5)', () => {
+  afterEach(() => {
+    delete window.kleos;
+  });
+
+  const lastRowsRequest = () => mocked.rows.mock.calls.at(-1)?.[1];
+
+  it('asks for the page size Settings holds and says so in the footer', async () => {
+    window.kleos = mockBridge({ settings: { pageSize: 500 } }).bridge;
+    renderTab();
+    await waitFor(() => expect(lastRowsRequest()).toMatchObject({ limit: 500, offset: 0 }));
+    expect(await screen.findByText('500 per page')).toBeInTheDocument();
+    // 1,204,380 rows at 500 a page.
+    expect(await screen.findByLabelText('Page 1 of 2409')).toBeInTheDocument();
+  });
+
+  it('follows a change made in Settings, back on page 1', async () => {
+    const user = userEvent.setup();
+    const mock = mockBridge({ settings: { pageSize: 100 } });
+    window.kleos = mock.bridge;
+    renderTab();
+    await screen.findByText('100 per page');
+    await user.click(await screen.findByRole('button', { name: 'Next page' }));
+    await user.click(screen.getByRole('button', { name: 'Next page' }));
+    await waitFor(() => expect(lastRowsRequest()).toMatchObject({ limit: 100, offset: 200 }));
+
+    act(() => mock.emitSettings({ pageSize: 1000 }));
+    await waitFor(() => expect(lastRowsRequest()).toMatchObject({ limit: 1000, offset: 0 }));
+    expect(screen.getByText('1,000 per page')).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Page 1\b/)).toBeInTheDocument();
+    // No request ever mixed the old page with the new size.
+    expect(mocked.rows.mock.calls.map((c) => [c[1].limit, c[1].offset])).not.toContainEqual([1000, 2000]);
+
+    // Going back to the old size doesn't jump back to the old page either.
+    act(() => mock.emitSettings({ pageSize: 100 }));
+    await waitFor(() => expect(lastRowsRequest()).toMatchObject({ limit: 100, offset: 0 }));
   });
 });

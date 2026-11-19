@@ -5,6 +5,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { connectionColorSwatch } from '@/features/connections/colors';
 import { ConnectProvider } from '@/features/connections/connect-context';
 import { ConnectionsScreen } from '@/features/connections/connections-screen';
+import { UpdateConsent } from '@/features/updates/update-consent';
+import { checkForUpdatesNow, UpdateNotice } from '@/features/updates/update-notice';
 import { WorkspaceScreen } from '@/features/workspace/workspace-screen';
 import { api, errorText, queryKeys } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -27,6 +29,7 @@ export function AppShell() {
   const queryClient = useQueryClient();
   const favorites = useQuery({ queryKey: queryKeys.connections, queryFn: api.listConnections });
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [updateOpen, setUpdateOpen] = useState(false);
 
   useWindowRestore(favorites.data, favorites.isError);
 
@@ -122,6 +125,7 @@ export function AppShell() {
               <TooltipContent>Open another connection ({mod}T)</TooltipContent>
             </Tooltip>
           </nav>
+          <UpdateNotice open={updateOpen} onOpenChange={setUpdateOpen} />
           <button
             type="button"
             onClick={() => setPaletteOpen(true)}
@@ -154,7 +158,13 @@ export function AppShell() {
           </div>
         ))}
       </div>
-      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} onCloseTab={closeTab} />
+      <CommandPalette
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
+        onCloseTab={closeTab}
+        onCheckForUpdates={() => void checkForUpdatesNow(() => setUpdateOpen(true))}
+      />
+      <UpdateConsent />
     </ConnectProvider>
   );
 }

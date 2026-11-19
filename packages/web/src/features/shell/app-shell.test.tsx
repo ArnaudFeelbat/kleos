@@ -1,5 +1,5 @@
 import { defaultSettings } from '@kleos/shared';
-import { idleUpdateState } from '@/test/bridge-defaults';
+import { availableUpdateState, idleUpdateState } from '@/test/bridge-defaults';
 import { emptyWindowState, kleosErrorCodes } from '@kleos/shared';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -151,6 +151,36 @@ describe('AppShell', { timeout: 15_000 }, () => {
   });
 });
 
+describe('AppShell — updates (0.5)', { timeout: 15_000 }, () => {
+  it('puts a quiet "Update available" pill in the title bar, which opens the release dialog', async () => {
+    const user = userEvent.setup();
+    bridge.getUpdateState.mockResolvedValueOnce(availableUpdateState);
+    renderShell();
+    const pill = await screen.findByRole('button', { name: 'Update available' });
+    expect(pill.closest('header')).not.toBeNull();
+    await user.click(pill);
+    expect(await screen.findByRole('dialog', { name: 'Kleos 0.5.1 is available' })).toBeInTheDocument();
+  });
+
+  it('⌘K › Check for Updates checks now and shows the release it finds', async () => {
+    const user = userEvent.setup();
+    bridge.checkForUpdates.mockResolvedValueOnce(availableUpdateState);
+    renderShell();
+    act(() => send?.('palette'));
+    await user.click(await screen.findByRole('option', { name: /Check for Updates/ }));
+    expect(bridge.checkForUpdates).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole('dialog', { name: 'Kleos 0.5.1 is available' })).toBeInTheDocument();
+  });
+
+  it('⌘K › Settings… opens the Settings window', async () => {
+    const user = userEvent.setup();
+    renderShell();
+    act(() => send?.('palette'));
+    await user.click(await screen.findByRole('option', { name: /Settings…/ }));
+    expect(bridge.openSettings).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('AppShell — restoring the last window', { timeout: 15_000 }, () => {
   const shop = { ...savedConnection, id: 'c1', nickname: 'shop_dev' };
   const analytics = { ...savedConnection, id: 'c2', nickname: 'analytics_prod', hasPassword: false };
@@ -180,8 +210,8 @@ describe('AppShell — restoring the last window', { timeout: 15_000 }, () => {
 
     expect(await screen.findByText('workspace s-shop front')).toBeInTheDocument();
     expect(within(strip).getByRole('button', { name: 'shop_dev' })).toHaveAttribute('aria-current', 'page');
-    expect(mocked.openSession).toHaveBeenCalledWith({ connectionId: 'c1' });
-    expect(mocked.openSession).toHaveBeenCalledWith({ connectionId: 'c2' });
+    expect(mocked.openSession).toHaveBeenCalledWith({ connectionId: 'c1', statementTimeoutSeconds: 0 });
+    expect(mocked.openSession).toHaveBeenCalledWith({ connectionId: 'c2', statementTimeoutSeconds: 0 });
     await waitFor(() =>
       expect(tabsStore.findByConnection('c2')?.restore).toEqual({
         state: 'reconnect',
@@ -201,9 +231,21 @@ describe('AppShell — restoring the last window', { timeout: 15_000 }, () => {
     await user.type(within(dialog).getByLabelText('Password'), 'hunter2{Enter}');
 
     expect(await screen.findByText('workspace s-analytics front')).toBeInTheDocument();
-    expect(mocked.openSession).toHaveBeenLastCalledWith({ connectionId: 'c2', password: 'hunter2' });
+    expect(mocked.openSession).toHaveBeenLastCalledWith({
+      connectionId: 'c2',
+      password: 'hunter2',
+      statementTimeoutSeconds: 0,
+    });
     // Replaced in place: still second, and no extra tab.
     expect(tabsStore.get().tabs.map((t) => t.sid)).toEqual(['s-shop', 's-analytics']);
+  });
+
+  it('reopens the servers with the query timeout Settings holds (0.5)', async () => {
+    bridge.getSettings.mockResolvedValueOnce({ ...defaultSettings, queryTimeoutSeconds: 60 });
+    renderShell();
+    await screen.findByText('workspace s-shop front');
+    expect(mocked.openSession).toHaveBeenCalledWith({ connectionId: 'c1', statementTimeoutSeconds: 60 });
+    expect(mocked.openSession).toHaveBeenCalledWith({ connectionId: 'c2', statementTimeoutSeconds: 60 });
   });
 
   it('saves the window once restored, never with a session id', async () => {

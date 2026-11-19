@@ -43,7 +43,11 @@ export function registerSessionRoutes(api: Hono, deps: ServerDeps): void {
     const connection = requireConnection(deps, req.connectionId);
     const password = req.password || (await secrets.get(connection.id)) || null;
     const config = configOf(connection);
-    const options = await sshOptions(deps, config, connection.id, req);
+    const options = {
+      ...(await sshOptions(deps, config, connection.id, req)),
+      // Settings › Query timeout; validated by OpenSessionRequest (whole seconds, at most a day).
+      ...(req.statementTimeoutSeconds ? { statementTimeoutSeconds: req.statementTimeoutSeconds } : {}),
+    };
     let session;
     try {
       // The SSH tunnel opens first, so its problems (host key, passphrase) come before the password prompt.

@@ -77,7 +77,9 @@ async function readOnlyNotices(client: Queryable): Promise<SessionNotice[]> {
 export function createPostgresAdapter(): DatabaseAdapter {
   return {
     connect(config: ConnectionConfig, password: string | null, options: ConnectOptions = {}): Promise<Session> {
-      return throughTunnel(config, options, (endpoint, tunnel) => openSession(config, password, endpoint, tunnel));
+      return throughTunnel(config, options, (endpoint, tunnel) =>
+        openSession(config, password, endpoint, tunnel, options.statementTimeoutSeconds ?? 0),
+      );
     },
 
     async test(config: ConnectionConfig, password: string | null, options: ConnectOptions = {}) {
@@ -115,10 +117,12 @@ async function openSession(
   password: string | null,
   endpoint: Endpoint | null,
   tunnel: SshTunnel | null,
+  statementTimeoutSeconds: number,
 ): Promise<Session> {
   const ownPids = new Set<number>();
   const { value } = await withSslFallback(config, async (ssl) => {
-    const settings = clientConfig(config, password, ssl, endpoint);
+    // The per-tab clients reuse these settings, so the timeout holds for them as well.
+    const settings = clientConfig(config, password, ssl, endpoint, statementTimeoutSeconds);
     const pool = new pg.Pool({ ...settings, max: POOL_SIZE, idleTimeoutMillis: POOL_IDLE_MS });
     // Idle clients that die (server restart, terminated backend) must not crash the app.
     pool.on('error', () => undefined);

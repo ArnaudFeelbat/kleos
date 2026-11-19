@@ -165,7 +165,11 @@ describe('ConnectionsScreen', { timeout: 15_000 }, () => {
     await user.click(await screen.findByRole('button', { name: /^Connect/ }));
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveTextContent('Password for shop_dev');
-    expect(mocked.openSession).toHaveBeenLastCalledWith({ connectionId: 'c1', password: null });
+    expect(mocked.openSession).toHaveBeenLastCalledWith({
+      connectionId: 'c1',
+      password: null,
+      statementTimeoutSeconds: 0,
+    });
 
     await user.type(within(dialog).getByLabelText('Password'), 'hunter2');
     await user.click(within(dialog).getByRole('button', { name: 'Connect' }));
@@ -174,7 +178,11 @@ describe('ConnectionsScreen', { timeout: 15_000 }, () => {
       expect(openTabs()).toEqual([expect.objectContaining({ sid: 'sid-9', nickname: 'shop_dev', color: 'blue' })]),
     );
     expect(tabsStore.get().active).toBe('sid-9');
-    expect(mocked.openSession).toHaveBeenLastCalledWith({ connectionId: 'c1', password: 'hunter2' });
+    expect(mocked.openSession).toHaveBeenLastCalledWith({
+      connectionId: 'c1',
+      password: 'hunter2',
+      statementTimeoutSeconds: 0,
+    });
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(mocked.updateConnection).not.toHaveBeenCalled();
   });
@@ -208,6 +216,21 @@ describe('ConnectionsScreen', { timeout: 15_000 }, () => {
     expect(mocked.openSession).toHaveBeenCalledTimes(1);
   });
 
+  it('opens the session with the query timeout Settings holds (0.5)', async () => {
+    const user = userEvent.setup();
+    bridge.getSettings.mockResolvedValueOnce({ ...defaultSettings, queryTimeoutSeconds: 300 });
+    mocked.openSession.mockResolvedValue(sessionInfo);
+    renderScreen([savedConnection]);
+    const nav = screen.getByRole('navigation', { name: 'Saved connections' });
+    await user.dblClick(await within(nav).findByRole('button', { name: /shop_dev/ }));
+    await waitFor(() => expect(openTabs()).toHaveLength(1));
+    expect(mocked.openSession).toHaveBeenCalledWith({
+      connectionId: 'c1',
+      password: null,
+      statementTimeoutSeconds: 300,
+    });
+  });
+
   it('saves a new connection before connecting it', async () => {
     const user = userEvent.setup();
     const created = { ...savedConnection, id: 'new-1', nickname: 'db.local', host: 'db.local', database: 'kleos' };
@@ -230,7 +253,11 @@ describe('ConnectionsScreen', { timeout: 15_000 }, () => {
         password: 'pw',
       }),
     );
-    expect(mocked.openSession).toHaveBeenCalledWith({ connectionId: 'new-1', password: 'pw' });
+    expect(mocked.openSession).toHaveBeenCalledWith({
+      connectionId: 'new-1',
+      password: 'pw',
+      statementTimeoutSeconds: 0,
+    });
   });
 });
 
@@ -263,6 +290,7 @@ describe('ConnectionsScreen — SSH and TLS', { timeout: 15_000 }, () => {
       connectionId: 'c1',
       password: null,
       trustSshFingerprint: fingerprint,
+      statementTimeoutSeconds: 0,
     });
     const password = await screen.findByRole('dialog', { name: 'Password for shop_dev' });
     await user.type(within(password).getByLabelText('Password'), 'hunter2{Enter}');
@@ -272,6 +300,7 @@ describe('ConnectionsScreen — SSH and TLS', { timeout: 15_000 }, () => {
       connectionId: 'c1',
       password: 'hunter2',
       trustSshFingerprint: fingerprint,
+      statementTimeoutSeconds: 0,
     });
   });
 
@@ -346,6 +375,7 @@ describe('ConnectionsScreen — SSH and TLS', { timeout: 15_000 }, () => {
       connectionId: 'c1',
       password: null,
       sshPassphrase: 'open sesame',
+      statementTimeoutSeconds: 0,
     });
     // Only the passphrase is stored; the saved password stays as it is.
     await waitFor(() =>

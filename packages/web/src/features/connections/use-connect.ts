@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
 import { api, ApiError, errorText, queryKeys } from '@/lib/api';
+import { loadSettings } from '@/lib/settings';
 import { tabsStore } from '@/features/shell/tabs-store';
 import { sessionRequest, targetOf, useCredentialPrompts, type Credentials } from './credential-flow';
 
@@ -72,7 +73,12 @@ export function useConnect() {
           target: targetOf(connection),
           credentials: { password },
           attempt: async (c) => {
-            const session = await api.openSession(sessionRequest(connection.id, c));
+            // Settings › Query timeout, read at each attempt: it applies to sessions opened after a change.
+            const { queryTimeoutSeconds } = await loadSettings();
+            const session = await api.openSession({
+              ...sessionRequest(connection.id, c),
+              statementTimeoutSeconds: queryTimeoutSeconds,
+            });
             const live = tabsStore.findByConnection(connection.id);
             if (live && !live.restore) {
               // A restored tab reconnected by itself meanwhile: keep that one, one tab per server.

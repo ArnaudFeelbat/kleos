@@ -4,6 +4,7 @@ import {
   Bookmark,
   ChartLine,
   Check,
+  CircleArrowDown,
   Code,
   Database,
   Eye,
@@ -13,6 +14,7 @@ import {
   Network,
   Plug,
   RefreshCw,
+  Settings,
   Sun,
   Table2,
   X,
@@ -62,6 +64,8 @@ const icons: Record<PaletteIcon, LucideIcon> = {
   system: Monitor,
   light: Sun,
   dark: Moon,
+  settings: Settings,
+  update: CircleArrowDown,
 };
 
 const groupTitles: Record<PaletteGroup, string> = {
@@ -77,13 +81,19 @@ type Props = {
   onOpenChange(open: boolean): void;
   /** Closes a server tab and its session (same path as the tab's close button). */
   onCloseTab(sid: string): void;
+  /**
+   * Check for Updates: the shell checks and answers in the window (dialog or toast). Without
+   * it, the check runs and the Settings window opens on its answer.
+   */
+  onCheckForUpdates?(): void;
 };
 
 /**
  * ⌘K: jump to any open server, connect a favorite, open any table or view of any open
- * server, switch workspace tab, refresh the schema, close the tab or change appearance.
+ * server, switch workspace tab, refresh the schema, close the tab, change appearance, open
+ * Settings or check for updates.
  */
-export function CommandPalette({ open, onOpenChange, onCloseTab }: Props) {
+export function CommandPalette({ open, onOpenChange, onCloseTab, onCheckForUpdates }: Props) {
   const { tabs, active } = useTabs();
   const { connect } = useConnectActions();
   const [search, setSearch] = useState('');
@@ -186,6 +196,16 @@ export function CommandPalette({ open, onOpenChange, onCloseTab }: Props) {
         break;
       case 'appearance':
         window.kleos?.setAppearance(r.mode);
+        break;
+      case 'settings':
+        window.kleos?.openSettings();
+        break;
+      case 'check-updates':
+        if (onCheckForUpdates) onCheckForUpdates();
+        else {
+          void window.kleos?.checkForUpdates().catch(() => undefined);
+          window.kleos?.openSettings();
+        }
         break;
     }
   }

@@ -14,7 +14,9 @@ export type PaletteRun =
   | { kind: 'refresh-schema'; sid: string }
   | { kind: 'home' }
   | { kind: 'close-tab'; sid: string }
-  | { kind: 'appearance'; mode: Appearance };
+  | { kind: 'appearance'; mode: Appearance }
+  | { kind: 'settings' }
+  | { kind: 'check-updates' };
 
 export type PaletteIcon =
   | 'server'
@@ -32,7 +34,9 @@ export type PaletteIcon =
   | 'close'
   | 'system'
   | 'light'
-  | 'dark';
+  | 'dark'
+  | 'settings'
+  | 'update';
 
 export type PaletteEntry = {
   /** Unique; also what cmdk filters on, together with `keywords`. */
@@ -229,5 +233,22 @@ export function buildPaletteEntries(input: PaletteInput): PaletteEntry[] {
       run: { kind: 'appearance', mode },
     });
   }
+  entries.push({
+    id: 'action:settings',
+    group: 'actions',
+    label: 'Settings…',
+    keywords: ['preferences', 'options', 'page size', 'rows per page', 'timeout', 'updates'],
+    icon: 'settings',
+    shortcut: `${mod},`,
+    run: { kind: 'settings' },
+  });
+  entries.push({
+    id: 'action:check-updates',
+    group: 'actions',
+    label: 'Check for Updates',
+    keywords: ['update', 'version', 'release', 'new', 'upgrade'],
+    icon: 'update',
+    run: { kind: 'check-updates' },
+  });
   return entries;
 }

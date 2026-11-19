@@ -1,9 +1,7 @@
 import { useCallback, useSyncExternalStore } from 'react';
-import type { SortKey } from '@kleos/shared';
+import { defaultSettings, type SortKey } from '@kleos/shared';
 import type { FilterChip } from './filters';
 import { emptyStage, type StageState } from './staging';
-
-export const PAGE_SIZE = 200;
 
 /** Everything the Data tab remembers per table: view settings and staged edits. */
 export type TableViewState = {
@@ -11,7 +9,10 @@ export type TableViewState = {
   chips: FilterChip[];
   /** Applied raw WHERE condition (the box keeps its own draft until Enter). */
   where: string;
+  /** Zero-based page, counted in `pageSize` rows. */
   page: number;
+  /** Rows per page `page` was counted in (Settings › Rows per page); unset while on page 1. */
+  pageSize?: number;
   stage: StageState;
 };
 
@@ -83,8 +84,13 @@ export function groupDigits(text: string): string {
   return `${m[1]}${m[2]!.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
 }
 
+/** The page to show: the remembered one, or page 1 when it was counted in another page size. */
+export function pageIndexFor(view: Pick<TableViewState, 'page' | 'pageSize'>, pageSize: number): number {
+  return view.page > 0 && view.pageSize !== pageSize ? 0 : view.page;
+}
+
 /** Number of pages for a row count given as text; null when unknown (negative estimate). */
-export function pageCount(count: string, pageSize = PAGE_SIZE): string | null {
+export function pageCount(count: string, pageSize: number = defaultSettings.pageSize): string | null {
   if (!/^\d+$/.test(count.trim())) return null;
   const n = BigInt(count.trim());
   const size = BigInt(pageSize);
