@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CountRequest, RowsRequest, SessionInfo } from '@kleos/shared';
 import { KleosError } from '../errors';
-import { pgError, setup } from './test-utils';
+import { connectionInput, pgError, setup } from './test-utils';
 
 const table = { schema: 'public', name: 'orders' };
 
@@ -290,5 +290,35 @@ describe('SSH tunnels and notices when opening a session (0.4)', () => {
     expect((await call('GET', `/sessions/${sid}`)).body).toMatchObject({
       notices: [{ code: 'READ_ONLY_DBLINK', message: 'dblink can write' }],
     });
+  });
+});
+
+describe('query timeout when opening a session (0.5)', () => {
+  it('passes statementTimeoutSeconds to the adapter, and nothing for 0 or absent', async () => {
+    const { call, adapter, createConnection } = setup();
+    const c = await createConnection();
+    expect((await call('POST', '/sessions', { connectionId: c.id, statementTimeoutSeconds: 30 })).status).toBe(200);
+    expect(adapter.connectOptions[0]).toEqual({ statementTimeoutSeconds: 30 });
+    await call('POST', '/sessions', { connectionId: c.id, statementTimeoutSeconds: 0 });
+    expect(adapter.connectOptions[1]).toEqual({});
+    await call('POST', '/sessions', { connectionId: c.id });
+    expect(adapter.connectOptions[2]).toEqual({});
+  });
+
+  it('refuses a timeout that is not a whole number of seconds between 0 and a day', async () => {
+    const { call, adapter, createConnection } = setup();
+    const c = await createConnection();
+    for (const statementTimeoutSeconds of [-1, 1.5, 86_401, '30', null]) {
+      const res = await call('POST', '/sessions', { connectionId: c.id, statementTimeoutSeconds });
+      expect(res.status).toBe(400);
+    }
+    expect(adapter.connectCalls).toEqual([]);
+  });
+
+  it('never sends the timeout with a connection test', async () => {
+    const { call, adapter } = setup();
+    const res = await call('POST', '/connections/test', { ...connectionInput(), statementTimeoutSeconds: 30 });
+    expect(res.status).toBe(200);
+    expect(adapter.testOptions[0]).toEqual({});
   });
 });

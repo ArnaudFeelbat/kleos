@@ -1,9 +1,12 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
 import { afterEach } from 'vitest';
+import { resetBridgeStores } from '@/lib/settings';
 
 afterEach(() => {
   cleanup();
+  // Settings and the update state are mirrored once per page; each test starts from its own bridge.
+  resetBridgeStores();
 });
 
 // jsdom lacks these; Radix and React Flow touch them.

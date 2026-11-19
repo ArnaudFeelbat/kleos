@@ -74,24 +74,35 @@ function optionValue(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/ /g, '\\ ');
 }
 
-/** Session settings sent at startup, so they hold for every statement of every client. */
-export function startupOptions(readOnly: boolean): string {
+/**
+ * Session settings sent at startup, so they hold for every statement of every client.
+ * `statementTimeoutSeconds` (Settings › Query timeout) is only a default: a statement may still
+ * SET its own, as with any session-level setting.
+ */
+export function startupOptions(readOnly: boolean, statementTimeoutSeconds = 0): string {
   const options = ['-c DateStyle=ISO'];
   const timeZone = localTimeZone();
   if (timeZone) options.push(`-c TimeZone=${optionValue(timeZone)}`);
   if (readOnly) options.push('-c default_transaction_read_only=on');
+  if (Number.isInteger(statementTimeoutSeconds) && statementTimeoutSeconds > 0) {
+    options.push(`-c statement_timeout=${statementTimeoutSeconds}s`);
+  }
   return options.join(' ');
 }
 
 /** Where the socket goes when it is not the favorite's host: the local end of an SSH tunnel. */
 export type Endpoint = { host: string; port: number };
 
-/** Client settings shared by test(), the pool and the per-tab clients. */
+/**
+ * Client settings shared by test(), the pool and the per-tab clients. A session passes its
+ * statement timeout; test() never does (it only runs `select version()`).
+ */
 export function clientConfig(
   config: ConnectionConfig,
   password: string | null,
   ssl: SslSetting,
   endpoint: Endpoint | null = null,
+  statementTimeoutSeconds = 0,
 ): pg.ClientConfig {
   return {
     host: endpoint?.host ?? config.host,
@@ -102,7 +113,7 @@ export function clientConfig(
     password: password ? password : ((() => undefined) as unknown as () => string),
     ssl,
     application_name: APPLICATION_NAME,
-    options: startupOptions(config.readOnly),
+    options: startupOptions(config.readOnly, statementTimeoutSeconds),
     types: textTypes,
     connectionTimeoutMillis: CONNECT_TIMEOUT_MS,
     keepAlive: true,

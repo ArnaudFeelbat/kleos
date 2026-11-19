@@ -121,4 +121,12 @@ describe('buildPaletteEntries', () => {
       ['action:appearance:dark', true],
     ]);
   });
+
+  it('always offers Settings… (⌘,) and Check for Updates, last', () => {
+    const entries = buildPaletteEntries(input());
+    expect(entries.slice(-2).map((e) => [e.label, e.shortcut, e.run])).toEqual([
+      ['Settings…', '⌘,', { kind: 'settings' }],
+      ['Check for Updates', undefined, { kind: 'check-updates' }],
+    ]);
+  });
 });

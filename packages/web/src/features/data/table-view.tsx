@@ -16,7 +16,7 @@ import {
   Undo2,
   Upload,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   emptyGridLayout,
@@ -63,6 +63,7 @@ import { ExportMenu } from '@/features/jobs/export-menu';
 import { runJob, useJobRunning } from '@/features/jobs/job-runner';
 import { api, ApiError, errorText, queryKeys } from '@/lib/api';
 import { getBridge } from '@/lib/bridge';
+import { useSettings } from '@/lib/settings';
 import { FilterBar } from './filter-bar';
 import { chipsToFilters, foreignKeysByColumn, foreignKeyTarget, type FilterChip } from './filters';
 import { usePersistedGridLayout } from './grid-layout';
@@ -78,7 +79,7 @@ import {
   type StagedUpdate,
   type StageTarget,
 } from './staging';
-import { groupDigits, nextSort, PAGE_SIZE, pageCount, updateTableView, useTableView } from './table-state';
+import { groupDigits, nextSort, pageCount, pageIndexFor, updateTableView, useTableView } from './table-state';
 
 const isMac = typeof navigator !== 'undefined' && /Mac/.test(navigator.platform);
 
@@ -157,11 +158,26 @@ export function TableView({
   );
 
   // ---- rows and counts -------------------------------------------------------------
+  // Settings › Rows per page. A page number counted in another size means nothing in this one,
+  // so a change of size starts again from page 1 (and drops the selection, whose rows moved).
+  const { pageSize } = useSettings();
+  const pageIndex = pageIndexFor(view, pageSize);
+  const shownPageSize = useRef(pageSize);
+  useEffect(() => {
+    if (shownPageSize.current === pageSize) return;
+    shownPageSize.current = pageSize;
+    setSelection(null);
+    setEditing(null);
+  }, [pageSize]);
+  useEffect(() => {
+    // Forget the stale page too, so returning to the old size doesn't jump back to it.
+    if (pageIndex !== view.page) update((s) => (pageIndexFor(s, pageSize) === s.page ? s : { ...s, page: 0 }));
+  }, [pageIndex, view.page, pageSize, update]);
   const filters = useMemo(() => chipsToFilters(view.chips), [view.chips]);
   const where = view.where.trim() || undefined;
   const rowsReq = useMemo<RowsRequest>(
-    () => ({ table, limit: PAGE_SIZE, offset: view.page * PAGE_SIZE, sort: view.sort, filters, where }),
-    [table, view.page, view.sort, filters, where],
+    () => ({ table, limit: pageSize, offset: pageIndex * pageSize, sort: view.sort, filters, where }),
+    [table, pageSize, pageIndex, view.sort, filters, where],
   );
   const rowsQuery = useQuery({
     queryKey: queryKeys.rows(sid, rowsReq),
@@ -272,7 +288,7 @@ export function TableView({
   const deleted = useMemo(() => new Set(stage.deletes.map((d) => d.rowKey)), [stage]);
   const counts = stageSize(stage);
   const rowCount = serverRows.length + stage.inserts.length;
-  const offset = view.page * PAGE_SIZE;
+  const offset = pageIndex * pageSize;
 
   const gridColumns = useMemo<GridColumn[]>(() => {
     return columns.map((c) => {
@@ -570,7 +586,7 @@ export function TableView({
   const setPage = (p: number) => {
     setSelection(null);
     setEditing(null);
-    update((s) => ({ ...s, page: Math.max(0, p) }));
+    update((s) => ({ ...s, page: Math.max(0, p), pageSize }));
   };
   const onHeaderClick = (c: number, { shiftKey }: { shiftKey: boolean }) => {
     const name = columns[c]?.meta.name;
@@ -596,7 +612,7 @@ export function TableView({
   // ---- footer numbers -----------------------------------------------------------------
   const exactCount = exactFor === countKey ? exact.data?.count : undefined;
   const total = exactCount ?? estimate.data?.count;
-  const totalPages = page && !page.hasMore ? String(view.page + 1) : total ? pageCount(total) : null;
+  const totalPages = page && !page.hasMore ? String(pageIndex + 1) : total ? pageCount(total, pageSize) : null;
   const firstRow = serverRows.length === 0 ? 0 : offset + 1;
   const lastRow = offset + serverRows.length;
 
@@ -938,7 +954,7 @@ export function TableView({
           </span>
         )}
         <span className="flex-1" />
-        <span className="text-muted-foreground tabular">{PAGE_SIZE} per page</span>
+        <span className="text-muted-foreground tabular">{groupDigits(String(pageSize))} per page</span>
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -947,8 +963,8 @@ export function TableView({
               size="icon-sm"
               className="size-7"
               aria-label="Previous page"
-              disabled={view.page === 0}
-              onClick={() => setPage(view.page - 1)}
+              disabled={pageIndex === 0}
+              onClick={() => setPage(pageIndex - 1)}
             >
               <ChevronLeft aria-hidden="true" />
             </Button>
@@ -957,9 +973,9 @@ export function TableView({
         </Tooltip>
         <span
           className="bg-background min-w-14 rounded-md px-2 py-1 text-center font-mono shadow-[inset_0_0_0_1px_var(--edge)]"
-          aria-label={`Page ${view.page + 1}${totalPages ? ` of ${totalPages}` : ''}`}
+          aria-label={`Page ${pageIndex + 1}${totalPages ? ` of ${totalPages}` : ''}`}
         >
-          {groupDigits(String(view.page + 1))}
+          {groupDigits(String(pageIndex + 1))}
           {totalPages ? ` / ${groupDigits(totalPages)}` : ''}
         </span>
         <Tooltip>
@@ -971,7 +987,7 @@ export function TableView({
               className="size-7"
               aria-label="Next page"
               disabled={!page?.hasMore}
-              onClick={() => setPage(view.page + 1)}
+              onClick={() => setPage(pageIndex + 1)}
             >
               <ChevronRight aria-hidden="true" />
             </Button>

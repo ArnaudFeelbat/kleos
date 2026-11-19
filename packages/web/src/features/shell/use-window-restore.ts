@@ -1,6 +1,7 @@
 import type { SavedConnection } from '@kleos/shared';
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
+import { loadSettings } from '@/lib/settings';
 import { persistWindowState, placeRestoredTabs, reconnectRestored } from './window-state';
 
 /** Once per page load: StrictMode and remounts must not restore the window twice. */
@@ -25,7 +26,8 @@ export function useWindowRestore(favorites: SavedConnection[] | undefined, favor
         void reconnectRestored(
           servers,
           state.activeConnectionId,
-          (connectionId) => api.openSession({ connectionId }),
+          async (connectionId) =>
+            api.openSession({ connectionId, statementTimeoutSeconds: (await loadSettings()).queryTimeoutSeconds }),
           (sid) => void api.closeSession(sid).catch(() => undefined),
         );
       })
