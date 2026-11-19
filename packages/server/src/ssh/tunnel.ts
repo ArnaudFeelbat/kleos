@@ -1,9 +1,13 @@
 import { type AddressInfo, type Server, type Socket, createServer } from 'node:net';
-import { Client, type ClientChannel, type ConnectConfig } from 'ssh2';
+// ssh2 is CommonJS and stays external to the Electron main bundle: Node's ESM loader only
+// exposes its default export there, so destructure instead of importing names.
+import ssh2, { type Client as SshClient, type ClientChannel, type ConnectConfig } from 'ssh2';
 import { type SshConfig, kleosErrorCodes } from '@kleos/shared';
 import { KleosError, isPgError } from '../errors';
 import { resolveSshCredentials, sshError } from './auth';
 import { type KnownHosts, checkHostKey, sshFingerprint } from './host-key';
+
+const { Client } = ssh2;
 
 /** Same budget as a direct Postgres connect. */
 const READY_TIMEOUT_MS = 15_000;
@@ -62,7 +66,7 @@ function sshFailure(err: Error & { level?: string; code?: unknown }, ssh: SshCon
 }
 
 /** Connects and authenticates; resolves once the SSH session is ready. */
-function connectSsh(options: TunnelOptions, credentials: ConnectConfig): Promise<Client> {
+function connectSsh(options: TunnelOptions, credentials: ConnectConfig): Promise<SshClient> {
   const { ssh } = options;
   return new Promise((resolve, reject) => {
     const client = new Client();
