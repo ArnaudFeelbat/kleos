@@ -426,3 +426,9 @@ Automated tests run against a throwaway Postgres in Docker, seeded with one tabl
 - Import (0.4): CSV/TSV only, into ordinary or partitioned tables, never on read-only favorites; one transaction of batched parameterized inserts, so a failure names the file line and column and nothing is imported. Unmapped columns take their default; empty cells are NULL. It runs as its own job, not mixed into staged edits.
 
 - Read-only and remote writes (0.4): postgres_fdw writes are refused on read-only sessions (tested); dblink_exec cannot be blocked, so the workspace shows a "dblink" notice when the extension is installed.
+
+- Settings (0.5): appearance, rows per page (100–1,000, Data tab), query timeout (Off to 15 minutes, sent as the session's statement_timeout for servers connected afterwards; a statement can still SET its own) and update checks. Owned by the main process in preferences.json; a Settings window (⌘,) and every other window hear changes at once.
+
+- Updates (0.5): no network call of Kleos's own until the user allows it (asked once; Settings › Updates). Then one GET to GitHub's latest-release API at launch and once a day; a newer version shows an "Update available" pill with the release notes and a Download link to the DMG. Kleos never installs anything by itself: without a Developer ID it can't replace its own signed bundle safely.
+
+- Distribution (0.5): a .dmg on GitHub Releases, never the Mac App Store; Apple silicon only (no Intel build); ad-hoc signed, not notarized — the DMG window shows the macOS 15+ first-open steps (Open Anyway in Privacy & Security); each release lists the DMG's SHA-256. The repository is public under the MIT license from 0.5.0. No crash reports for now.

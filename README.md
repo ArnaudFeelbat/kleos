@@ -54,6 +54,9 @@ and watch your server live — one window, one tab per server.
   typed in the editor can turn writes back on.
 - **Made for macOS.** Translucent sidebar, light and dark appearance (or follow the
   system), native menus and shortcuts, passwords in the Keychain.
+- **Settings, and updates on your terms.** Rows per page, a query timeout and appearance in
+  one Settings window (⌘,). Kleos tells you when a new version is out — only once you allow
+  it to ask GitHub, and never by installing anything itself.
 
 ## A closer look
 
@@ -179,8 +182,6 @@ artboards in [docs/design](docs/design).
 Kleos ships as a `.dmg` on GitHub Releases, never through the Mac App Store. The plan to 1.0,
 one theme per release — subject to change:
 
-- **0.5 · Share** — a DMG anyone can open (first-open guide, or signed and notarized with a
-  Developer ID), new-version notice, SHA-256 checksums, a Settings window
 - **0.6 · Schema** — diff two open servers, schema editing with a SQL preview, diagram export
 - **0.7 · Query** — “Run all”, query parameters, formatter and snippets, searchable history
 - **0.8 · Insight** — plans explained in plain language, monitoring alerts and trends

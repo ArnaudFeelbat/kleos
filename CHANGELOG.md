@@ -1,5 +1,49 @@
 # Nouveautés de Kleos
 
+## Version 0.5.0 — 19 novembre 2026
+
+### Des réglages, enfin
+
+- **Une fenêtre « Settings ».** Menu **Kleos › Settings…** ou ⌘, (ou tapez « settings »
+  dans la palette ⌘K). Trois onglets :
+  - « General » : l'apparence (System, Light, Dark), avec un aperçu de chaque mode ;
+  - « Data » : le nombre de lignes chargées par page dans l'onglet Données (« Rows per
+    page » : 100, 200, 500 ou 1 000) et un délai maximum pour les requêtes (« Query
+    timeout » : de 30 secondes à 15 minutes, ou aucun) ;
+  - « Updates » : la version installée et la recherche de nouvelles versions.
+- Chaque réglage s'applique tout de suite, dans toutes les fenêtres.
+- Le délai maximum vaut pour les serveurs ouverts après le changement : une requête trop
+  longue est arrêtée par Postgres au lieu de tourner indéfiniment.
+
+### Être prévenu des nouvelles versions
+
+- Au premier lancement, Kleos vous demande s'il peut vérifier une fois par jour s'il existe
+  une nouvelle version (« Check for new versions? »). Tant que vous n'avez pas accepté,
+  **Kleos n'envoie rien sur Internet** de lui-même ; ensuite, rien d'autre que cette
+  vérification.
+- Quand une nouvelle version sort, un bouton « Update available » apparaît en haut de la
+  fenêtre : il affiche les nouveautés et propose de télécharger le DMG (« Download »), de
+  passer cette version (« Skip this version ») ou d'y revenir plus tard (« Later »).
+- Vous pouvez aussi vérifier à tout moment : **Kleos › Check for Updates…**, ou « Check
+  now » dans les réglages.
+
+### Plus simple à partager
+
+- **Le code de Kleos est désormais public**, sous licence MIT, sur GitHub.
+- **Un guide dans le DMG.** En ouvrant le fichier, la fenêtre explique comment lancer Kleos
+  la première fois : Kleos ne vient pas de l'App Store, macOS demande donc une confirmation
+  unique (« Open Anyway » dans Réglages Système › Confidentialité et sécurité).
+- **Une empreinte pour chaque version.** Chaque version publiée indique l'empreinte
+  SHA-256 du DMG, pour vérifier qu'un fichier transmis de main en main est bien l'original.
+
+### Corrections
+
+- Un tunnel SSH coupé est toujours signalé comme tel, même quand la base répond une
+  fraction de seconde avant.
+- Passer en mode sombre depuis la palette ⌘K assombrit bien toute la fenêtre.
+
+---
+
 ## Version 0.4.0 — 19 novembre 2026
 
 ### Se connecter partout
