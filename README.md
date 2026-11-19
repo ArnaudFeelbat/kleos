@@ -77,6 +77,10 @@ and watch your server live — one window, one tab per server.
     <td><img src="docs/screenshots/export-menu.jpg" alt="The Export menu on a table: CSV, JSON or Excel workbook" /><br /><sub><b>Export</b> — every matching row to CSV, JSON or Excel, streamed to disk.</sub></td>
     <td><img src="docs/screenshots/import-csv.jpg" alt="The Import CSV dialog with column mapping and a preview" /><br /><sub><b>Import CSV</b> — map columns, preview, then one transaction.</sub></td>
   </tr>
+  <tr>
+    <td><img src="docs/screenshots/settings-general.jpg" alt="The Settings window's General pane with System, Light and Dark appearance cards" /><br /><sub><b>Settings</b> — appearance for every window (⌘,).</sub></td>
+    <td><img src="docs/screenshots/settings-data.jpg" alt="The Settings window's Data pane with rows per page and a query timeout" /><br /><sub><b>Data settings</b> — rows per page and a query timeout.</sub></td>
+  </tr>
 </table>
 
 ## Install
