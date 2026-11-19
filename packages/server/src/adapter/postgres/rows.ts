@@ -61,8 +61,9 @@ function requireValue(filter: Filter): string {
 /**
  * ORDER BY for the requested sort, followed by the primary-key columns not already sorted on,
  * so paging with LIMIT/OFFSET is stable. Views and tables without a key get no implicit order.
+ * Exports reuse it with the WHERE above, so a file holds exactly what the grid shows.
  */
-function orderBy(table: TableInfo, sort: SortKey[]): string {
+export function orderBy(table: TableInfo, sort: SortKey[]): string {
   const keys = sort.map((s) => `${quoteIdent(columnOf(table, s.column).name)} ${s.dir === 'desc' ? 'desc' : 'asc'}`);
   const sorted = new Set(sort.map((s) => s.column));
   for (const pk of table.primaryKey) {

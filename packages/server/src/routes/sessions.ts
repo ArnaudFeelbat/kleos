@@ -14,7 +14,7 @@ import {
 import { KleosError } from '../errors';
 import type { ServerDeps } from '../http/deps';
 import type { OpenSession } from '../sessions/registry';
-import { asConnectionError, configOf, requireConnection } from './connections';
+import { asConnectionError, configOf, requireConnection, sshOptions } from './connections';
 import { isRefresh, jsonBody, sqlStateOf } from './validation';
 
 /** SQLSTATE invalid_password, or the driver refusing to authenticate without one. */
@@ -31,6 +31,7 @@ function sessionInfo(deps: ServerDeps, entry: OpenSession): SessionInfo {
     connection: deps.store.getConnection(entry.connection.id) ?? entry.connection,
     serverVersion: entry.session.serverVersion,
     serverVersionShort: entry.session.serverVersionShort,
+    ...(entry.session.notices ? { notices: entry.session.notices } : {}),
   };
 }
 
@@ -41,9 +42,12 @@ export function registerSessionRoutes(api: Hono, deps: ServerDeps): void {
     const req = await jsonBody(c, OpenSessionRequest);
     const connection = requireConnection(deps, req.connectionId);
     const password = req.password || (await secrets.get(connection.id)) || null;
+    const config = configOf(connection);
+    const options = await sshOptions(deps, config, connection.id, req);
     let session;
     try {
-      session = await adapter.connect(configOf(connection), password);
+      // The SSH tunnel opens first, so its problems (host key, passphrase) come before the password prompt.
+      session = await adapter.connect(config, password, options);
     } catch (err) {
       if (!password && isMissingPassword(err)) {
         throw new KleosError(401, {

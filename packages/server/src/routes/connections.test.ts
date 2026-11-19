@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { SavedConnection } from '@kleos/shared';
+import { type SavedConnection, type SshConfig, kleosErrorCodes } from '@kleos/shared';
+import { KleosError } from '../errors';
 import { connectionInput, pgError, setup } from './test-utils';
+
+const keySsh: SshConfig = { host: 'bastion', port: 22, user: 'deploy', auth: 'key', keyPath: '~/.ssh/id_ed25519' };
+const agentSsh: SshConfig = { host: 'bastion', port: 22, user: 'deploy', auth: 'agent', keyPath: null };
 
 describe('connection routes', () => {
   it('creates a favorite without a password and lists it', async () => {
@@ -143,6 +147,8 @@ describe('POST /connections/test', () => {
           sslMode: 'prefer',
           color: 'none',
           readOnly: false,
+          ssh: null,
+          sslRootCertPath: null,
         },
         password: 'typed',
       },
@@ -180,6 +186,133 @@ describe('POST /connections/test', () => {
       code: 'KLEOS_CONNECTION',
       message: 'connect ECONNREFUSED 127.0.0.1:5432',
       detail: 'ECONNREFUSED',
+    });
+  });
+});
+
+describe('SSH tunnel and private CA on favorites (0.4)', () => {
+  it('stores ssh and sslRootCertPath, null when absent, and lists them', async () => {
+    const { call, createConnection } = setup();
+    const plain = await createConnection();
+    expect(plain).toMatchObject({ ssh: null, sslRootCertPath: null, hasSshPassphrase: false });
+
+    const tunneled = await createConnection({ nickname: 'Prod', ssh: keySsh, sslRootCertPath: '~/prod-ca.pem' });
+    expect(tunneled).toMatchObject({ ssh: keySsh, sslRootCertPath: '~/prod-ca.pem', hasSshPassphrase: false });
+    expect((await call('GET', '/connections')).body).toEqual([plain, tunneled]);
+  });
+
+  it('keeps the SSH key passphrase in the Keychain under "<id>:ssh" only when asked to', async () => {
+    const { createConnection, secrets } = setup();
+    const saved = await createConnection({ ssh: keySsh, sshPassphrase: 'secret', saveSshPassphrase: true });
+    expect(saved.hasSshPassphrase).toBe(true);
+    expect(secrets.entries.get(`${saved.id}:ssh`)).toBe('secret');
+
+    const unsaved = await createConnection({ ssh: keySsh, sshPassphrase: 'secret', saveSshPassphrase: false });
+    expect(unsaved.hasSshPassphrase).toBe(false);
+    expect(secrets.entries.has(`${unsaved.id}:ssh`)).toBe(false);
+
+    // The agent needs no passphrase from Kleos.
+    const agent = await createConnection({ ssh: agentSsh, sshPassphrase: 'secret', saveSshPassphrase: true });
+    expect(agent.hasSshPassphrase).toBe(false);
+    expect(secrets.entries.has(`${agent.id}:ssh`)).toBe(false);
+  });
+
+  it('updates the passphrase like the password: null keeps, false removes, no key tunnel removes', async () => {
+    const { call, createConnection, secrets } = setup();
+    const c = await createConnection({ ssh: keySsh, sshPassphrase: 'one', saveSshPassphrase: true });
+    const put = (overrides: Parameters<typeof connectionInput>[0]) =>
+      call('PUT', `/connections/${c.id}`, connectionInput({ ssh: keySsh, ...overrides }));
+
+    expect((await put({ sshPassphrase: null, saveSshPassphrase: true })).body).toMatchObject({
+      hasSshPassphrase: true,
+    });
+    // An older client that knows nothing of the passphrase keeps it too.
+    expect((await put({})).body).toMatchObject({ hasSshPassphrase: true });
+    expect(secrets.entries.get(`${c.id}:ssh`)).toBe('one');
+
+    expect((await put({ sshPassphrase: 'two', saveSshPassphrase: true })).body).toMatchObject({
+      hasSshPassphrase: true,
+    });
+    expect(secrets.entries.get(`${c.id}:ssh`)).toBe('two');
+
+    expect((await put({ saveSshPassphrase: false })).body).toMatchObject({ hasSshPassphrase: false });
+    expect(secrets.entries.has(`${c.id}:ssh`)).toBe(false);
+
+    await put({ sshPassphrase: 'three', saveSshPassphrase: true });
+    const direct = await put({ ssh: null });
+    expect(direct.body).toMatchObject({ ssh: null, hasSshPassphrase: false });
+    expect(secrets.entries.has(`${c.id}:ssh`)).toBe(false);
+  });
+
+  it('deleting a favorite removes its SSH passphrase from the Keychain too', async () => {
+    const { call, createConnection, secrets } = setup();
+    const c = await createConnection({
+      password: 'pw',
+      savePassword: true,
+      ssh: keySsh,
+      sshPassphrase: 'p',
+      saveSshPassphrase: true,
+    });
+    expect((await call('DELETE', `/connections/${c.id}`)).status).toBe(204);
+    expect(secrets.entries.size).toBe(0);
+  });
+
+  describe('POST /connections/test', () => {
+    const form = (overrides: Record<string, unknown> = {}) => {
+      const { password: _p, savePassword: _s, ...config } = connectionInput({ ssh: keySsh });
+      return { ...config, password: 'pw', ...overrides };
+    };
+
+    it('passes the typed passphrase, or the stored one, the trusted fingerprint and the known hosts', async () => {
+      const { call, adapter, createConnection, store } = setup();
+      const c = await createConnection({ ssh: keySsh, sshPassphrase: 'stored', saveSshPassphrase: true });
+
+      await call('POST', '/connections/test', form({ sshPassphrase: 'typed', trustSshFingerprint: 'SHA256:abc' }));
+      expect(adapter.testCalls[0]?.config.ssh).toEqual(keySsh);
+      expect(adapter.testOptions[0]).toEqual({
+        sshPassphrase: 'typed',
+        trustSshFingerprint: 'SHA256:abc',
+        knownHosts: store,
+      });
+
+      await call('POST', '/connections/test', form({ connectionId: c.id }));
+      expect(adapter.testOptions[1]).toEqual({ sshPassphrase: 'stored', knownHosts: store });
+
+      await call('POST', '/connections/test', form());
+      expect(adapter.testOptions[2]).toEqual({ sshPassphrase: null, knownHosts: store });
+
+      await call('POST', '/connections/test', form({ ssh: null, connectionId: c.id }));
+      expect(adapter.testOptions[3]).toEqual({});
+    });
+
+    it('reports whether TLS was used', async () => {
+      const { call, adapter } = setup();
+      adapter.test = async () => ({ version: 'PostgreSQL 17', elapsedMs: 3, tls: true });
+      expect((await call('POST', '/connections/test', form())).body).toEqual({
+        version: 'PostgreSQL 17',
+        elapsedMs: 3,
+        tls: true,
+      });
+    });
+
+    it('passes SSH and file errors through with their status, code and detail', async () => {
+      const { call, adapter } = setup();
+      adapter.testError = new KleosError(409, {
+        code: kleosErrorCodes.sshHostUnknown,
+        message: 'Kleos has not connected to the SSH host bastion:22 before.',
+        detail: 'SHA256:abc',
+      });
+      const unknown = await call('POST', '/connections/test', form());
+      expect(unknown.status).toBe(409);
+      expect(unknown.body).toMatchObject({ code: 'KLEOS_SSH_HOST_UNKNOWN', detail: 'SHA256:abc' });
+
+      adapter.testError = new KleosError(400, {
+        code: kleosErrorCodes.file,
+        message: 'Could not read the CA certificate',
+      });
+      const file = await call('POST', '/connections/test', form());
+      expect(file.status).toBe(400);
+      expect(file.body).toMatchObject({ code: 'KLEOS_FILE' });
     });
   });
 });

@@ -21,6 +21,7 @@ describe('test()', () => {
     const result = await adapter.test(db.config, db.password);
     expect(result.version).toMatch(/^PostgreSQL 17\./);
     expect(result.elapsedMs).toBeGreaterThanOrEqual(0);
+    expect(result.tls).toBe(false);
   });
 
   it('throws the server error for a bad password, SQLSTATE kept', async () => {
@@ -53,6 +54,7 @@ describe('test()', () => {
   it('sslMode prefer falls back to plain when the server refuses TLS', async () => {
     const result = await adapter.test({ ...db.config, sslMode: 'prefer' }, db.password);
     expect(result.version).toMatch(/^PostgreSQL/);
+    expect(result.tls).toBe(false);
   });
 });
 

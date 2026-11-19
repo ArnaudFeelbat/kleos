@@ -17,7 +17,15 @@ import type {
   StatsResultOf,
   TestConnectionResult,
 } from '@kleos/shared';
-import type { DatabaseAdapter, QueryOptions, Session } from '../adapter/types';
+import type {
+  DatabaseAdapter,
+  ExportJob,
+  ImportJob,
+  JobContext,
+  JobResult,
+  QueryOptions,
+  Session,
+} from '../adapter/types';
 import { createApp } from '../http/app';
 import { SessionRegistry } from '../sessions/registry';
 import { createMemorySecretStore } from '../store/keychain';
@@ -116,28 +124,49 @@ export class FakeSession implements Session {
     this.hit('backendAction', pid, mode);
     return { ok: true };
   }
+  /** What exportFile and importFile do once called; a test can make it wait for the cancel. */
+  jobWork: (job: JobContext) => Promise<JobResult> = async () => ({ rows: 3, bytes: 42 });
+  async exportFile(req: ExportJob, job: JobContext): Promise<JobResult> {
+    this.hit('exportFile', req);
+    return this.jobWork(job);
+  }
+  async importFile(req: ImportJob, job: JobContext): Promise<JobResult> {
+    this.hit('importFile', req);
+    return this.jobWork(job);
+  }
   async close(): Promise<void> {
     this.hit('close');
     this.closed = true;
   }
 }
 
+type ConnectOptions = NonNullable<Parameters<DatabaseAdapter['connect']>[2]>;
+
 export class FakeAdapter implements DatabaseAdapter {
   readonly connectCalls: Array<{ config: ConnectionConfig; password: string | null }> = [];
   readonly testCalls: Array<{ config: ConnectionConfig; password: string | null }> = [];
+  /** The SSH options of each call, index for index with connectCalls and testCalls. (0.4) */
+  readonly connectOptions: ConnectOptions[] = [];
+  readonly testOptions: ConnectOptions[] = [];
   readonly sessions: FakeSession[] = [];
   connectError: unknown = null;
   testError: unknown = null;
 
-  async connect(config: ConnectionConfig, password: string | null): Promise<Session> {
+  async connect(config: ConnectionConfig, password: string | null, options: ConnectOptions = {}): Promise<Session> {
     this.connectCalls.push({ config, password });
+    this.connectOptions.push(options);
     if (this.connectError) throw this.connectError;
     const session = new FakeSession(config.readOnly);
     this.sessions.push(session);
     return session;
   }
-  async test(config: ConnectionConfig, password: string | null): Promise<TestConnectionResult> {
+  async test(
+    config: ConnectionConfig,
+    password: string | null,
+    options: ConnectOptions = {},
+  ): Promise<TestConnectionResult> {
     this.testCalls.push({ config, password });
+    this.testOptions.push(options);
     if (this.testError) throw this.testError;
     return { version: 'PostgreSQL 16.4', elapsedMs: 4 };
   }

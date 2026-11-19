@@ -5,6 +5,8 @@ import type {
   CountRequest,
   CountResult,
   ExplainResult,
+  ExportRequest,
+  ImportRequest,
   QueryPage,
   QueryStarted,
   RowEdit,
@@ -16,6 +18,8 @@ import type {
   TableRef,
   TestConnectionResult,
 } from '@kleos/shared';
+import type { z } from 'zod';
+import type { KnownHosts } from '../ssh/host-key';
 
 /**
  * Every feature talks to the database through this interface, so the HTTP layer
@@ -24,10 +28,23 @@ import type {
  */
 export interface DatabaseAdapter {
   /** Opens a session: a pool of up to 4 clients for grid, schema and monitoring. */
-  connect(config: ConnectionConfig, password: string | null): Promise<Session>;
+  connect(config: ConnectionConfig, password: string | null, options?: ConnectOptions): Promise<Session>;
   /** Connects once, runs `select version()`, disconnects. Throws the driver's real error. */
-  test(config: ConnectionConfig, password: string | null): Promise<TestConnectionResult>;
+  test(config: ConnectionConfig, password: string | null, options?: ConnectOptions): Promise<TestConnectionResult>;
 }
+
+/** What a favorite with an SSH tunnel needs besides its config and password. (0.4) */
+export type ConnectOptions = {
+  /** SSH key passphrase, from the request or the Keychain. */
+  sshPassphrase?: string | null;
+  /** Host key fingerprint the user accepted after KLEOS_SSH_HOST_UNKNOWN. */
+  trustSshFingerprint?: string;
+  /** Trusted SSH host keys; required when the favorite has an SSH tunnel. */
+  knownHosts?: KnownHosts;
+};
+
+/** Something the user should know about a session, shown when it opens. (0.4) */
+export type SessionNotice = { code: string; message: string };
 
 export type QueryOptions = {
   /** Client-generated id, used for paging, cancel and close. */
@@ -42,6 +59,8 @@ export interface Session {
   /** "16.4" */
   readonly serverVersionShort: string;
   readonly readOnly: boolean;
+  /** e.g. READ_ONLY_DBLINK on a read-only session of a database with dblink. (0.4) */
+  readonly notices?: SessionNotice[];
 
   /** Reads pg_catalog. System schemas are left out. */
   introspect(): Promise<SchemaModel>;
@@ -74,7 +93,33 @@ export interface Session {
   /** pg_cancel_backend or pg_terminate_backend. */
   backendAction(pid: number, mode: 'cancel' | 'terminate'): Promise<BackendActionResult>;
 
+  /**
+   * Streams a table (with the grid's filters and sort) or one statement to a file, on its own
+   * client inside a READ ONLY transaction. Writes `${path}.kleos-partial` and renames it on
+   * success; the partial file is deleted on failure or cancel. (0.4)
+   */
+  exportFile(req: ExportJob, job: JobContext): Promise<JobResult>;
+  /**
+   * Inserts a CSV file into an ordinary or partitioned table in one transaction on its own
+   * client: all rows or none. Errors name the file line and the column at fault. (0.4)
+   */
+  importFile(req: ImportJob, job: JobContext): Promise<JobResult>;
+
   close(): Promise<void>;
 }
+
+/** Export and import requests after zod defaults. */
+export type ExportJob = z.output<typeof ExportRequest>;
+export type ImportJob = z.output<typeof ImportRequest>;
+
+/** What a background job gets from the job registry. */
+export type JobContext = {
+  /** Aborted by POST /jobs/:jobId/cancel or when the session closes. */
+  signal: AbortSignal;
+  /** Rows written or inserted so far, and bytes written or read. */
+  progress(update: JobResult): void;
+};
+
+export type JobResult = { rows: number; bytes: number };
 
 export type { TableRef };

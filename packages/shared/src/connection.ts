@@ -80,6 +80,8 @@ export type TestConnectionRequest = z.infer<typeof TestConnectionRequest>;
 export const TestConnectionResult = z.object({
   version: z.string(),
   elapsedMs: z.number(),
+  /** Whether the test connection ran over TLS (sslMode prefer may fall back to plain). (0.4) */
+  tls: z.boolean().optional(),
 });
 export type TestConnectionResult = z.infer<typeof TestConnectionResult>;
 

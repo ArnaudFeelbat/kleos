@@ -17,6 +17,16 @@ export type OpenSession = {
 /** Live database sessions by id. One window per connection holds one session. */
 export class SessionRegistry {
   private readonly sessions = new Map<string, OpenSession>();
+  private readonly closeListeners = new Set<(sid: string) => Promise<void> | void>();
+
+  /**
+   * Runs `listener` when a session closes, before its connections end (the job registry
+   * cancels the session's exports and imports there). Returns an unsubscribe function.
+   */
+  onClose(listener: (sid: string) => Promise<void> | void): () => void {
+    this.closeListeners.add(listener);
+    return () => this.closeListeners.delete(listener);
+  }
 
   add(connection: SavedConnection, session: Session): OpenSession {
     const entry: OpenSession = { sid: randomUUID(), connection, session };
@@ -37,6 +47,7 @@ export class SessionRegistry {
     const entry = this.sessions.get(sid);
     if (!entry) return;
     this.sessions.delete(sid);
+    await Promise.allSettled([...this.closeListeners].map(async (listener) => listener(sid)));
     await entry.session.close();
   }
 

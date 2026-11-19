@@ -72,9 +72,7 @@ export const ImportRequest = z.object({
   delimiter: z.enum([',', ';', '\t']),
   hasHeader: z.boolean(),
   /** File column index -> table column. Unmapped table columns take their DEFAULT. */
-  mapping: z
-    .array(z.object({ fileColumn: z.number().int().min(0), column: z.string() }))
-    .min(1),
+  mapping: z.array(z.object({ fileColumn: z.number().int().min(0), column: z.string() })).min(1),
   /** Cell texts that mean NULL, e.g. ["", "NULL"]. */
   nullValues: z.array(z.string()).default(['']),
 });

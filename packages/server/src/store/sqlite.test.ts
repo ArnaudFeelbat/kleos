@@ -38,6 +38,61 @@ describe('sqlite app store', () => {
     expect(store.listConnections()).toEqual([]);
   });
 
+  it('stores the SSH tunnel, CA path and passphrase flag, null when absent', () => {
+    store = createSqliteStore(':memory:');
+    const plain = store.createConnection(config, false);
+    expect(plain).toMatchObject({ ssh: null, sslRootCertPath: null, hasSshPassphrase: false });
+
+    const ssh = { host: 'bastion.example.com', port: 22, user: 'deploy', auth: 'key' as const, keyPath: '~/.ssh/id' };
+    const tunneled = store.createConnection({ ...config, ssh, sslRootCertPath: '~/ca.pem' }, false, true);
+    expect(tunneled).toMatchObject({ ssh, sslRootCertPath: '~/ca.pem', hasSshPassphrase: true });
+
+    // Undefined keeps the passphrase flag; an explicit value replaces it.
+    const kept = store.updateConnection(
+      tunneled.id,
+      { ...config, ssh: { ...ssh, auth: 'agent', keyPath: null } },
+      false,
+    );
+    expect(kept).toMatchObject({
+      ssh: { auth: 'agent', keyPath: null },
+      sslRootCertPath: null,
+      hasSshPassphrase: true,
+    });
+    expect(store.updateConnection(tunneled.id, config, false, false)).toMatchObject({
+      ssh: null,
+      hasSshPassphrase: false,
+    });
+  });
+
+  it('remembers one trusted SSH host key per host and port', () => {
+    store = createSqliteStore(':memory:');
+    expect(store.getKnownHost('bastion', 22)).toBeNull();
+    store.trustKnownHost('bastion', 22, 'SHA256:aaa');
+    store.trustKnownHost('bastion', 2222, 'SHA256:bbb');
+    expect(store.getKnownHost('bastion', 22)).toBe('SHA256:aaa');
+    expect(store.getKnownHost('bastion', 2222)).toBe('SHA256:bbb');
+    store.trustKnownHost('bastion', 22, 'SHA256:ccc');
+    expect(store.getKnownHost('bastion', 22)).toBe('SHA256:ccc');
+  });
+
+  it('saves the window state and drops servers of deleted favorites when read back', () => {
+    store = createSqliteStore(':memory:');
+    expect(store.getWindowState()).toEqual({ servers: [], activeConnectionId: null });
+    const a = store.createConnection(config, false);
+    const b = store.createConnection({ ...config, nickname: 'b' }, false);
+    const server = (connectionId: string) => ({
+      connectionId,
+      queryTabs: [{ title: 'Query 1', sql: 'select 1', chart: null, savedQueryId: null }],
+      activeQueryTab: 0,
+      workspaceTab: 'query' as const,
+    });
+    store.saveWindowState({ servers: [server(a.id), server(b.id)], activeConnectionId: b.id });
+    expect(store.getWindowState()).toEqual({ servers: [server(a.id), server(b.id)], activeConnectionId: b.id });
+
+    store.deleteConnection(b.id);
+    expect(store.getWindowState()).toEqual({ servers: [server(a.id)], activeConnectionId: null });
+  });
+
   it('keeps only the latest 1,000 history entries per connection, newest first', () => {
     store = createSqliteStore(':memory:');
     const { id } = store.createConnection(config, false);
@@ -133,13 +188,17 @@ describe('sqlite app store', () => {
 
       store = createSqliteStore(path);
       expect(store.listConnections().map((c) => c.id)).toEqual(['c1']);
+      // 0.4 columns arrive empty on an older favorite.
+      expect(store.getConnection('c1')).toMatchObject({ ssh: null, sslRootCertPath: null, hasSshPassphrase: false });
       expect(store.getLayout('c1', 'public').positions).toEqual({ 'public.orders': { x: 1, y: 2 } });
       expect(store.getGridLayout('c1', 'public', 'orders')).toEqual(emptyGridLayout);
       store.saveGridLayout('c1', 'public', 'orders', { order: ['id'], widths: {} });
       store.close();
 
       const check = new Database(path);
-      expect(check.prepare('SELECT max(version) AS v FROM schema_version').get()).toEqual({ v: 2 });
+      expect(check.prepare('SELECT max(version) AS v FROM schema_version').get()).toEqual({
+        v: migrations.at(-1)!.version,
+      });
       check.close();
       store = createSqliteStore(path);
       expect(store.getGridLayout('c1', 'public', 'orders')).toEqual({ order: ['id'], widths: {} });

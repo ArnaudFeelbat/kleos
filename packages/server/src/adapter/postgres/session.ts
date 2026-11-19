@@ -14,9 +14,11 @@ import type {
   StatsKind,
   StatsResultOf,
 } from '@kleos/shared';
-import type { QueryOptions, Session } from '../types';
+import type { SshTunnel } from '../../ssh/tunnel';
+import type { QueryOptions, Session, SessionNotice } from '../types';
 import { applyEdits } from './edits';
 import { introspect } from './introspect';
+import { postgresJobs } from './jobs';
 import { QueryManager } from './query';
 import { estimateCount, exactCount, fetchRows } from './rows';
 import { StatsCollector } from './stats';
@@ -32,6 +34,9 @@ export type SessionInit = {
   serverVersionNum: number;
   /** Backend pids of the pool's clients, kept current by the pool's connect/remove events. */
   ownPids: Set<number>;
+  notices?: SessionNotice[];
+  /** The SSH tunnel every client goes through, closed with the session. */
+  tunnel?: SshTunnel | null;
 };
 
 /**
@@ -42,17 +47,25 @@ export class PostgresSession implements Session {
   readonly serverVersion: string;
   readonly serverVersionShort: string;
   readonly readOnly: boolean;
+  readonly notices: SessionNotice[];
 
   private readonly pool: pg.Pool;
+  private readonly tunnel: SshTunnel | null;
   private readonly queries: QueryManager;
   private readonly monitor: StatsCollector;
   private closing: Promise<void> | null = null;
+
+  /** Export and import (0.4): each job on its own client, outside the pool; see jobs.ts. */
+  readonly exportFile: Session['exportFile'] = (req, job) => postgresJobs(this.pool).exportFile(req, job);
+  readonly importFile: Session['importFile'] = (req, job) => postgresJobs(this.pool).importFile(req, job);
 
   constructor(init: SessionInit) {
     this.pool = init.pool;
     this.readOnly = init.readOnly;
     this.serverVersion = init.serverVersion;
     this.serverVersionShort = init.serverVersionShort;
+    this.notices = init.notices ?? [];
+    this.tunnel = init.tunnel ?? null;
     this.queries = new QueryManager(
       init.pool,
       init.clientConfig,
@@ -64,19 +77,19 @@ export class PostgresSession implements Session {
   }
 
   introspect(): Promise<SchemaModel> {
-    return introspect(this.pool);
+    return this.guard(() => introspect(this.pool));
   }
 
   fetchRows(req: RowsRequest): Promise<RowsPage> {
-    return this.withRawWhere(req.where, (q) => fetchRows(q, req));
+    return this.guard(() => this.withRawWhere(req.where, (q) => fetchRows(q, req)));
   }
 
   estimateCount(req: CountRequest): Promise<CountResult> {
-    return this.withRawWhere(req.where, (q) => estimateCount(q, req));
+    return this.guard(() => this.withRawWhere(req.where, (q) => estimateCount(q, req)));
   }
 
   count(req: CountRequest): Promise<CountResult> {
-    return this.withRawWhere(req.where, (q) => exactCount(q, req));
+    return this.guard(() => this.withRawWhere(req.where, (q) => exactCount(q, req)));
   }
 
   /**
@@ -91,19 +104,19 @@ export class PostgresSession implements Session {
   }
 
   applyEdits(edits: RowEdit[]): Promise<ApplyEditsResult> {
-    return applyEdits(this.pool, edits, this.readOnly);
+    return this.guard(() => applyEdits(this.pool, edits, this.readOnly));
   }
 
   runQuery(sql: string, opts: QueryOptions): Promise<QueryStarted> {
-    return this.queries.runQuery(sql, opts);
+    return this.guard(() => this.queries.runQuery(sql, opts));
   }
 
   nextPage(qid: string, size: number): Promise<QueryPage> {
-    return this.queries.nextPage(qid, size);
+    return this.guard(() => this.queries.nextPage(qid, size));
   }
 
   cancelQuery(qid: string): Promise<void> {
-    return this.queries.cancelQuery(qid);
+    return this.guard(() => this.queries.cancelQuery(qid));
   }
 
   closeQuery(qid: string): Promise<void> {
@@ -111,7 +124,7 @@ export class PostgresSession implements Session {
   }
 
   explain(sql: string, opts: Omit<QueryOptions, 'pageSize'>): Promise<ExplainResult> {
-    return this.queries.explain(sql, opts);
+    return this.guard(() => this.queries.explain(sql, opts));
   }
 
   closeTab(tabId: string): Promise<void> {
@@ -119,18 +132,32 @@ export class PostgresSession implements Session {
   }
 
   async stats<K extends StatsKind>(kind: K): Promise<StatsResultOf<K>> {
-    return (await this.monitor.collect(kind)) as StatsResultOf<K>;
+    return (await this.guard(() => this.monitor.collect(kind))) as StatsResultOf<K>;
   }
 
   backendAction(pid: number, mode: 'cancel' | 'terminate'): Promise<BackendActionResult> {
-    return this.monitor.backendAction(pid, mode);
+    return this.guard(() => this.monitor.backendAction(pid, mode));
   }
 
-  /** Ends cursors, tab clients and the pool. Idempotent; never throws. */
+  /**
+   * Through an SSH tunnel, a failure caused by the tunnel (gone, or the SSH host unable to reach
+   * the database) is reported as such, a KLEOS_CONNECTION naming the tunnel, instead of the
+   * driver's "Connection terminated unexpectedly" or a 500.
+   */
+  private async guard<T>(run: () => Promise<T>): Promise<T> {
+    try {
+      return await run();
+    } catch (err) {
+      throw this.tunnel ? this.tunnel.explain(err) : err;
+    }
+  }
+
+  /** Ends cursors, tab clients, the pool and the SSH tunnel. Idempotent; never throws. */
   close(): Promise<void> {
     this.closing ??= (async () => {
       await this.queries.closeAll().catch(() => undefined);
       await this.pool.end().catch(() => undefined);
+      await this.tunnel?.close();
     })();
     return this.closing;
   }

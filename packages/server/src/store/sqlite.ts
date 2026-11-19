@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import Database from 'better-sqlite3';
+import type { z } from 'zod';
 import {
   ChartSettings,
   type ConnectionColor,
@@ -12,7 +13,10 @@ import {
   type SavedConnection,
   type SavedQuery,
   type SavedQueryInput,
+  SshConfig,
   type SslMode,
+  WindowState,
+  emptyWindowState,
 } from '@kleos/shared';
 import { KleosError } from '../errors';
 import { migrations } from './migrations';
@@ -31,6 +35,9 @@ type ConnectionRow = {
   color: string;
   read_only: number;
   has_password: number;
+  ssh: string | null;
+  ssl_root_cert_path: string | null;
+  has_ssh_passphrase: number;
   created_at: string;
   updated_at: string;
 };
@@ -68,9 +75,39 @@ function toConnection(row: ConnectionRow): SavedConnection {
     sslMode: row.ssl_mode as SslMode,
     color: row.color as ConnectionColor,
     readOnly: row.read_only === 1,
+    ssh: parseJson(row.ssh, SshConfig),
+    sslRootCertPath: row.ssl_root_cert_path,
     hasPassword: row.has_password === 1,
+    hasSshPassphrase: row.has_ssh_passphrase === 1,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  };
+}
+
+/** Parses stored JSON with a schema; anything unreadable is null rather than a crash. */
+function parseJson<S extends z.ZodType>(text: string | null, schema: S): z.output<S> | null {
+  if (text === null) return null;
+  try {
+    const parsed = schema.safeParse(JSON.parse(text));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Named parameters for the connections table; ssh and the CA path absent are stored as null. */
+function connectionParams(config: ConnectionConfig) {
+  return {
+    nickname: config.nickname,
+    host: config.host,
+    port: config.port,
+    user: config.user,
+    database: config.database,
+    sslMode: config.sslMode,
+    color: config.color,
+    readOnly: config.readOnly ? 1 : 0,
+    ssh: config.ssh ? JSON.stringify(SshConfig.parse(config.ssh)) : null,
+    sslRootCertPath: config.sslRootCertPath || null,
   };
 }
 
@@ -144,26 +181,72 @@ export function createSqliteStore(path: string): AppStore {
       const row = db.prepare('SELECT * FROM connections WHERE id = ?').get(id) as ConnectionRow | undefined;
       return row ? toConnection(row) : null;
     },
-    createConnection(config: ConnectionConfig, hasPassword) {
+    createConnection(config: ConnectionConfig, hasPassword, hasSshPassphrase = false) {
       const id = randomUUID();
       const t = now();
       db.prepare(
-        `INSERT INTO connections (id, nickname, host, port, user, database, ssl_mode, color, read_only, has_password, created_at, updated_at)
-         VALUES (@id, @nickname, @host, @port, @user, @database, @sslMode, @color, @readOnly, @hasPassword, @t, @t)`,
-      ).run({ ...config, id, readOnly: config.readOnly ? 1 : 0, hasPassword: hasPassword ? 1 : 0, t });
+        `INSERT INTO connections (id, nickname, host, port, user, database, ssl_mode, color, read_only, ssh,
+           ssl_root_cert_path, has_password, has_ssh_passphrase, created_at, updated_at)
+         VALUES (@id, @nickname, @host, @port, @user, @database, @sslMode, @color, @readOnly, @ssh,
+           @sslRootCertPath, @hasPassword, @hasSshPassphrase, @t, @t)`,
+      ).run({
+        ...connectionParams(config),
+        id,
+        hasPassword: hasPassword ? 1 : 0,
+        hasSshPassphrase: hasSshPassphrase ? 1 : 0,
+        t,
+      });
       return requireConnection(id);
     },
-    updateConnection(id, config, hasPassword) {
-      requireConnection(id);
+    updateConnection(id, config, hasPassword, hasSshPassphrase) {
+      const existing = requireConnection(id);
       db.prepare(
         `UPDATE connections SET nickname = @nickname, host = @host, port = @port, user = @user, database = @database,
-           ssl_mode = @sslMode, color = @color, read_only = @readOnly, has_password = @hasPassword, updated_at = @t
+           ssl_mode = @sslMode, color = @color, read_only = @readOnly, ssh = @ssh, ssl_root_cert_path = @sslRootCertPath,
+           has_password = @hasPassword, has_ssh_passphrase = @hasSshPassphrase, updated_at = @t
          WHERE id = @id`,
-      ).run({ ...config, id, readOnly: config.readOnly ? 1 : 0, hasPassword: hasPassword ? 1 : 0, t: now() });
+      ).run({
+        ...connectionParams(config),
+        id,
+        hasPassword: hasPassword ? 1 : 0,
+        hasSshPassphrase: (hasSshPassphrase ?? existing.hasSshPassphrase) ? 1 : 0,
+        t: now(),
+      });
       return requireConnection(id);
     },
     deleteConnection(id) {
       db.prepare('DELETE FROM connections WHERE id = ?').run(id);
+    },
+
+    getKnownHost(host, port) {
+      const row = db.prepare('SELECT fingerprint FROM ssh_known_hosts WHERE host = ? AND port = ?').get(host, port) as
+        { fingerprint: string } | undefined;
+      return row?.fingerprint ?? null;
+    },
+    trustKnownHost(host, port, fingerprint) {
+      db.prepare(
+        `INSERT INTO ssh_known_hosts (host, port, fingerprint, added_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT (host, port) DO UPDATE SET fingerprint = excluded.fingerprint, added_at = excluded.added_at`,
+      ).run(host, port, fingerprint, now());
+    },
+
+    getWindowState(): WindowState {
+      const row = db.prepare('SELECT state FROM window_state WHERE id = 1').get() as { state: string } | undefined;
+      const saved = row ? parseJson(row.state, WindowState) : null;
+      if (!saved) return structuredClone(emptyWindowState);
+      // A favorite deleted since the window was saved has nothing left to reopen.
+      const ids = new Set((db.prepare('SELECT id FROM connections').all() as { id: string }[]).map((r) => r.id));
+      return {
+        servers: saved.servers.filter((server) => ids.has(server.connectionId)),
+        activeConnectionId:
+          saved.activeConnectionId !== null && ids.has(saved.activeConnectionId) ? saved.activeConnectionId : null,
+      };
+    },
+    saveWindowState(state) {
+      db.prepare(
+        `INSERT INTO window_state (id, state, updated_at) VALUES (1, ?, ?)
+         ON CONFLICT (id) DO UPDATE SET state = excluded.state, updated_at = excluded.updated_at`,
+      ).run(JSON.stringify(WindowState.parse(state)), now());
     },
 
     getLayout(connectionId, schema): LayoutPositions {
