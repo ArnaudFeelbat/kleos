@@ -40,13 +40,18 @@ export type SshTunnel = {
   /**
    * Replaces a driver error caused by the tunnel (SSH connection lost, or the SSH host unable
    * to reach the database) with one that says so. Any other error is returned unchanged.
+   * A forwarded channel can close (and the driver fail) a moment before ssh2 reports the SSH
+   * connection gone, so a non-Postgres error waits briefly for that verdict.
    */
-  explain(err: unknown): unknown;
+  explain(err: unknown): Promise<unknown>;
   /** Stops the forwarder and ends the SSH connection. Idempotent; never throws. */
   close(): Promise<void>;
 };
 
 const where = (ssh: SshConfig) => `${ssh.host}:${ssh.port}`;
+
+/** How long explain() waits for ssh2 to report a lost connection after a driver error. */
+const LOSS_GRACE_MS = 1000;
 
 /** ssh2's errors, as the person setting up the favorite needs to read them. */
 function sshFailure(err: Error & { level?: string; code?: unknown }, ssh: SshConfig): KleosError {
@@ -135,6 +140,8 @@ export async function openTunnel(options: TunnelOptions): Promise<SshTunnel> {
   const sockets = new Set<Socket>();
   let lost: KleosError | null = null;
   let closing: Promise<void> | null = null;
+  let signalLost: () => void = () => undefined;
+  const lostSignal = new Promise<void>((resolve) => (signalLost = resolve));
   // The last channel the SSH host refused to open (database unreachable from there), until one opens.
   let forwardError: Error | null = null;
 
@@ -174,6 +181,7 @@ export async function openTunnel(options: TunnelOptions): Promise<SshTunnel> {
     });
     // Open connections fail now rather than wait on a channel that will never answer.
     for (const socket of sockets) socket.destroy();
+    signalLost();
   };
   client.on('error', onLost);
   client.on('close', () => onLost());
@@ -191,9 +199,14 @@ export async function openTunnel(options: TunnelOptions): Promise<SshTunnel> {
     get lost() {
       return lost;
     },
-    explain(err) {
+    async explain(err) {
       if (isPgError(err)) return err;
       if (err instanceof KleosError && err.body.code !== kleosErrorCodes.connection) return err;
+      if (!lost && !forwardError && !closing) {
+        let timer: NodeJS.Timeout | undefined;
+        await Promise.race([lostSignal, new Promise((resolve) => (timer = setTimeout(resolve, LOSS_GRACE_MS)))]);
+        clearTimeout(timer);
+      }
       if (lost) return lost;
       if (forwardError) {
         return new KleosError(502, {
