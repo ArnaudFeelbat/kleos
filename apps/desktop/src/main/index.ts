@@ -116,6 +116,9 @@ function toggleAppearance(): void {
 ipcMain.handle('kleos:get-appearance', () => appearance);
 
 // --- Files: export and import pick paths through native dialogs; the server reads/writes them. ---
+// KLEOS_FAKE_DIALOGS=<dir> (scripted UI tours only) answers every dialog with a path in <dir>
+// instead of showing it: native sheets can't be driven over the DevTools protocol.
+const fakeDialogDir = process.env.KLEOS_FAKE_DIALOGS || null;
 const exportFilters: Record<string, Electron.FileFilter> = {
   csv: { name: 'CSV', extensions: ['csv'] },
   json: { name: 'JSON', extensions: ['json'] },
@@ -125,6 +128,7 @@ const exportFilters: Record<string, Electron.FileFilter> = {
 ipcMain.handle('kleos:save-dialog', async (event, args: { defaultName?: unknown; format?: unknown }) => {
   const format = typeof args?.format === 'string' && args.format in exportFilters ? args.format : 'csv';
   const name = typeof args?.defaultName === 'string' ? args.defaultName.replace(/[/\\:]/g, '-') : 'export';
+  if (fakeDialogDir) return join(fakeDialogDir, `${name}.${format}`);
   const win = BrowserWindow.fromWebContents(event.sender);
   const options: Electron.SaveDialogOptions = {
     defaultPath: join(app.getPath('downloads'), `${name}.${format}`),
@@ -149,6 +153,8 @@ const openKinds: Record<string, Pick<Electron.OpenDialogOptions, 'filters' | 'de
 };
 
 ipcMain.handle('kleos:open-dialog', async (event, kind: unknown) => {
+  if (fakeDialogDir)
+    return join(fakeDialogDir, kind === 'key' ? 'id_ed25519' : kind === 'cert' ? 'ca.pem' : 'import.csv');
   const win = BrowserWindow.fromWebContents(event.sender);
   const options: Electron.OpenDialogOptions = {
     properties: ['openFile', 'showHiddenFiles'],
@@ -159,6 +165,7 @@ ipcMain.handle('kleos:open-dialog', async (event, kind: unknown) => {
 });
 
 ipcMain.on('kleos:reveal', (_event, path: unknown) => {
+  if (fakeDialogDir) return;
   if (typeof path === 'string' && path.startsWith('/')) shell.showItemInFolder(path);
 });
 ipcMain.on('kleos:set-appearance', (_event, mode: unknown) => {
