@@ -3,7 +3,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
-import type { StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+import type { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import type { ConnectionConfig } from '@kleos/shared';
 
 const IMAGE = 'postgres:17-alpine';
@@ -35,7 +35,17 @@ export function fixture(name: string): string {
 }
 
 /** Starts a throwaway Postgres and runs the given fixture files (from test/fixtures) in order. */
-export async function startPostgres(options: { seeds?: string[]; command?: string[] } = {}): Promise<TestDatabase> {
+export async function startPostgres(
+  options: {
+    seeds?: string[];
+    command?: string[];
+    /**
+     * Last say on the container before it starts (network, files, entrypoint). Runs after Docker
+     * is configured, so it may import testcontainers itself. (0.4)
+     */
+    customize?: (builder: PostgreSqlContainer) => PostgreSqlContainer | Promise<PostgreSqlContainer>;
+  } = {},
+): Promise<TestDatabase> {
   configureDocker();
   const { PostgreSqlContainer } = await import('@testcontainers/postgresql');
   const { Wait } = await import('testcontainers');
@@ -45,6 +55,7 @@ export async function startPostgres(options: { seeds?: string[]; command?: strin
     .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
     .withStartupTimeout(170_000);
   if (options.command) builder = builder.withCommand(options.command);
+  if (options.customize) builder = await options.customize(builder);
   const container: StartedPostgreSqlContainer = await builder.start();
 
   const config: ConnectionConfig = {

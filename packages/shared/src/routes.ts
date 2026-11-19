@@ -3,6 +3,21 @@
  * `Authorization: Bearer <per-launch token>`. Bodies and responses are the Zod
  * schemas named beside each route. Errors return ApiErrorBody.
  *
+ * Opening a connection (POST /connections/test, POST /sessions) can fail with, in the order a
+ * user meets them (the SSH tunnel opens before Postgres is asked anything): (0.4)
+ *   400 KLEOS_FILE                     SSH key or CA certificate file unreadable; detail = ENOENT, EACCES…
+ *   401 KLEOS_SSH_PASSPHRASE_REQUIRED  encrypted SSH key and no passphrase (body or Keychain);
+ *                                      retry with sshPassphrase
+ *   409 KLEOS_SSH_HOST_UNKNOWN         first connection to this SSH host:port; detail = its
+ *                                      fingerprint ("SHA256:…"); retry with trustSshFingerprint = detail
+ *   409 KLEOS_SSH_HOST_CHANGED         the SSH host key differs from the trusted one; detail = the
+ *                                      new fingerprint, hint = the trusted one; never connects
+ *   502 KLEOS_SSH                      no ssh-agent, wrong passphrase, key refused, SSH host unreachable
+ *   401 KLEOS_PASSWORD_REQUIRED        (POST /sessions) Postgres wants a password and none was available
+ *   502 KLEOS_CONNECTION               network or TLS failure, the SSH host unable to reach the
+ *                                      database, or (on any session route) the SSH tunnel closed
+ *   400 <SQLSTATE>                     Postgres refused, e.g. 28P01 wrong password
+ *
  *   GET    /health                                   -> Health
  *   GET    /connections                              -> SavedConnection[]
  *   POST   /connections          ConnectionInput     -> SavedConnection

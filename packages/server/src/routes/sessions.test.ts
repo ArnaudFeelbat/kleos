@@ -239,3 +239,56 @@ describe('table data routes', () => {
     expect(ro.session.callsTo('applyEdits')).toEqual([]);
   });
 });
+
+describe('SSH tunnels and notices when opening a session (0.4)', () => {
+  const ssh = { host: 'bastion', port: 22, user: 'deploy', auth: 'key' as const, keyPath: '~/.ssh/id_ed25519' };
+
+  it('uses the passphrase sent in the body, else the Keychain one, and passes the trusted fingerprint', async () => {
+    const { call, adapter, createConnection, store } = setup();
+    const c = await createConnection({ ssh, sshPassphrase: 'stored', saveSshPassphrase: true });
+
+    await call('POST', '/sessions', { connectionId: c.id });
+    expect(adapter.connectCalls[0]?.config.ssh).toEqual(ssh);
+    expect(adapter.connectOptions[0]).toEqual({ sshPassphrase: 'stored', knownHosts: store });
+
+    await call('POST', '/sessions', { connectionId: c.id, sshPassphrase: 'typed', trustSshFingerprint: 'SHA256:x' });
+    expect(adapter.connectOptions[1]).toEqual({
+      sshPassphrase: 'typed',
+      trustSshFingerprint: 'SHA256:x',
+      knownHosts: store,
+    });
+  });
+
+  it('passes no SSH options for a direct favorite', async () => {
+    const { call, adapter, createConnection } = setup();
+    const c = await createConnection();
+    await call('POST', '/sessions', { connectionId: c.id, sshPassphrase: 'ignored' });
+    expect(adapter.connectOptions[0]).toEqual({});
+  });
+
+  it('reports SSH problems as they are, before any password prompt', async () => {
+    const { call, adapter, createConnection } = setup();
+    const c = await createConnection({ ssh });
+    for (const [status, code] of [
+      [401, 'KLEOS_SSH_PASSPHRASE_REQUIRED'],
+      [409, 'KLEOS_SSH_HOST_UNKNOWN'],
+      [409, 'KLEOS_SSH_HOST_CHANGED'],
+      [502, 'KLEOS_SSH'],
+    ] as const) {
+      adapter.connectError = new KleosError(status, { code, message: 'ssh trouble', detail: 'SHA256:x' });
+      const res = await call('POST', '/sessions', { connectionId: c.id });
+      expect(res.status).toBe(status);
+      expect(res.body).toEqual({ code, message: 'ssh trouble', detail: 'SHA256:x' });
+    }
+  });
+
+  it("includes the session's notices in SessionInfo", async () => {
+    const { call, openSession } = setup();
+    const { sid, session } = await openSession({ readOnly: true });
+    expect((await call('GET', `/sessions/${sid}`)).body).not.toHaveProperty('notices');
+    Object.assign(session, { notices: [{ code: 'READ_ONLY_DBLINK', message: 'dblink can write' }] });
+    expect((await call('GET', `/sessions/${sid}`)).body).toMatchObject({
+      notices: [{ code: 'READ_ONLY_DBLINK', message: 'dblink can write' }],
+    });
+  });
+});

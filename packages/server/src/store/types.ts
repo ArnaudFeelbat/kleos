@@ -7,6 +7,7 @@ import type {
   SavedConnection,
   SavedQuery,
   SavedQueryInput,
+  WindowState,
 } from '@kleos/shared';
 
 /**
@@ -16,10 +17,29 @@ import type {
 export interface AppStore {
   listConnections(): SavedConnection[];
   getConnection(id: string): SavedConnection | null;
-  createConnection(config: ConnectionConfig, hasPassword: boolean): SavedConnection;
-  updateConnection(id: string, config: ConnectionConfig, hasPassword: boolean): SavedConnection;
+  /** `ssh` and `sslRootCertPath` absent are stored as null; hasSshPassphrase defaults to false. */
+  createConnection(config: ConnectionConfig, hasPassword: boolean, hasSshPassphrase?: boolean): SavedConnection;
+  /** hasSshPassphrase undefined keeps the stored flag. */
+  updateConnection(
+    id: string,
+    config: ConnectionConfig,
+    hasPassword: boolean,
+    hasSshPassphrase?: boolean,
+  ): SavedConnection;
   /** Also removes the connection's history, layouts, grid layouts and saved queries. */
   deleteConnection(id: string): void;
+
+  /** SSH host keys trusted on first use, by SSH host and port. */
+  getKnownHost(host: string, port: number): string | null;
+  /** Records the fingerprint for host:port, replacing any previous one. */
+  trustKnownHost(host: string, port: number, fingerprint: string): void;
+
+  /**
+   * The window to restore (emptyWindowState when none is saved or the saved JSON is no longer
+   * valid). Servers whose favorite was deleted since are left out.
+   */
+  getWindowState(): WindowState;
+  saveWindowState(state: WindowState): void;
 
   getLayout(connectionId: string, schema: string): LayoutPositions;
   saveLayout(connectionId: string, schema: string, layout: LayoutPositions): void;
@@ -43,9 +63,17 @@ export interface AppStore {
   close(): void;
 }
 
-/** Passwords, kept in the macOS Keychain under service "kleos", account = connection id. */
+/**
+ * Passwords, kept in the macOS Keychain under service "kleos", account = connection id. The SSH
+ * key passphrase of a favorite uses the account sshSecretAccount(connection id).
+ */
 export interface SecretStore {
   get(connectionId: string): Promise<string | null>;
   set(connectionId: string, password: string): Promise<void>;
   delete(connectionId: string): Promise<void>;
+}
+
+/** Keychain account of a favorite's SSH key passphrase. */
+export function sshSecretAccount(connectionId: string): string {
+  return `${connectionId}:ssh`;
 }
