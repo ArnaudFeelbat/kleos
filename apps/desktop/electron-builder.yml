@@ -4,8 +4,8 @@ copyright: Personal use
 directories:
   output: release
   buildResources: build
-# The main bundle already contains the server, pg, hono and zod; only the two native
-# modules (this package's `dependencies`) are copied in from node_modules.
+# The main bundle already contains the server, pg, hono and zod; this package's
+# `dependencies` (the native modules, ssh2, exceljs) are copied in from node_modules.
 files:
   - out/**
   - package.json

@@ -8,12 +8,14 @@ const webRoot = resolve(__dirname, '../../packages/web');
 export default defineConfig({
   main: {
     build: {
-      // Only the native modules stay outside the bundle (they are this package's
-      // `dependencies`); pg, hono, zod and the workspace packages are bundled.
-      externalizeDeps: { include: ['better-sqlite3', '@napi-rs/keyring'] },
+      // This package's `dependencies` stay outside the bundle and ship in node_modules: the
+      // two native modules, ssh2 (optional native crypto, loaded through try/require) and
+      // exceljs (large CommonJS tree). pg, hono, zod, csv-parse and the workspace packages
+      // are bundled.
+      externalizeDeps: { include: ['better-sqlite3', '@napi-rs/keyring', 'ssh2', 'exceljs'] },
       rollupOptions: {
         input: { index: resolve(__dirname, 'src/main/index.ts') },
-        external: ['pg-native', 'better-sqlite3', '@napi-rs/keyring'],
+        external: ['pg-native', 'better-sqlite3', '@napi-rs/keyring', 'ssh2', 'exceljs'],
       },
     },
   },
