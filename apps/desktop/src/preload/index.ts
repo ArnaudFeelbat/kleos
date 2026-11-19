@@ -17,7 +17,7 @@ contextBridge.exposeInMainWorld('kleos', {
   getAppearance: () => ipcRenderer.invoke('kleos:get-appearance'),
   setAppearance: (mode: string) => ipcRenderer.send('kleos:set-appearance', mode),
   saveFileDialog: (args: { defaultName: string; format: string }) => ipcRenderer.invoke('kleos:save-dialog', args),
-  openFileDialog: () => ipcRenderer.invoke('kleos:open-dialog'),
+  openFileDialog: (kind: string = 'csv') => ipcRenderer.invoke('kleos:open-dialog', kind),
   revealInFinder: (path: string) => ipcRenderer.send('kleos:reveal', path),
   onCommand: (listener: (command: string) => void) => {
     const handler = (_event: IpcRendererEvent, command: string) => listener(command);

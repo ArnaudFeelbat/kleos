@@ -135,11 +135,24 @@ ipcMain.handle('kleos:save-dialog', async (event, args: { defaultName?: unknown;
   return result.canceled || !result.filePath ? null : result.filePath;
 });
 
-ipcMain.handle('kleos:open-dialog', async (event) => {
+const openKinds: Record<string, Pick<Electron.OpenDialogOptions, 'filters' | 'defaultPath' | 'title'>> = {
+  csv: { title: 'Import a CSV file', filters: [{ name: 'CSV or TSV', extensions: ['csv', 'tsv', 'txt'] }] },
+  // Private keys usually have no extension (id_ed25519); start in ~/.ssh, show hidden files.
+  key: { title: 'Choose an SSH private key', defaultPath: join(app.getPath('home'), '.ssh') },
+  cert: {
+    title: 'Choose a CA certificate',
+    filters: [
+      { name: 'Certificates', extensions: ['pem', 'crt', 'cer'] },
+      { name: 'All files', extensions: ['*'] },
+    ],
+  },
+};
+
+ipcMain.handle('kleos:open-dialog', async (event, kind: unknown) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   const options: Electron.OpenDialogOptions = {
-    properties: ['openFile'],
-    filters: [{ name: 'CSV or TSV', extensions: ['csv', 'tsv', 'txt'] }],
+    properties: ['openFile', 'showHiddenFiles'],
+    ...(openKinds[typeof kind === 'string' && kind in openKinds ? kind : 'csv'] ?? {}),
   };
   const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
   return result.canceled ? null : (result.filePaths[0] ?? null);

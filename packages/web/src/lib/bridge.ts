@@ -23,8 +23,11 @@ export type KleosBridge = {
   setAppearance(mode: Appearance): void;
   /** Native save dialog for an export; resolves to the chosen absolute path, or null when cancelled. (0.4) */
   saveFileDialog(args: { defaultName: string; format: 'csv' | 'json' | 'xlsx' }): Promise<string | null>;
-  /** Native open dialog for a CSV/TSV import; null when cancelled. (0.4) */
-  openFileDialog(): Promise<string | null>;
+  /**
+   * Native open dialog; null when cancelled. (0.4)
+   * `csv` for an import, `key` for an SSH private key (starts in ~/.ssh), `cert` for a CA file.
+   */
+  openFileDialog(kind?: 'csv' | 'key' | 'cert'): Promise<string | null>;
   /** Shows the file in Finder. (0.4) */
   revealInFinder(path: string): void;
   /** Subscribes to menu commands; returns the unsubscribe function. */
