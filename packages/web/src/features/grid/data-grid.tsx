@@ -68,6 +68,11 @@ export type DataGridProps = {
   onResetColumns?(): void;
   /** Whether the caller's order or widths differ from the defaults (enables Reset columns). */
   columnsCustomized?: boolean;
+  /**
+   * The user scrolled the grid, or started resizing or dragging a column: a layout that
+   * arrives late must no longer move columns under them.
+   */
+  onUserAdjust?(): void;
 };
 
 const moveKeys: Record<string, MoveKey> = {
@@ -117,6 +122,7 @@ export function DataGrid(props: DataGridProps) {
     onColumnMove,
     onResetColumns,
     columnsCustomized,
+    onUserAdjust,
   } = props;
   const gridId = useId();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -133,6 +139,10 @@ export function DataGrid(props: DataGridProps) {
   // Header the context menu was opened on; null for a cell (the menu then acts on the focused column).
   const [menuCol, setMenuCol] = useState<number | null>(null);
   const [announcement, setAnnouncement] = useState('');
+  // Roving tabindex of the header row: the one header reachable with Tab, moved by ←/→.
+  const [headerCol, setHeaderCol] = useState(0);
+  // Set when a header should take DOM focus once it is rendered (it may be virtualized away).
+  const focusHeaderPending = useRef<number | null>(null);
 
   const colWidths = useMemo(
     () => columns.map((c) => (liveWidth?.key === c.key ? liveWidth.width : (widths[c.key] ?? defaultColumnWidth(c)))),
@@ -218,10 +228,84 @@ export function DataGrid(props: DataGridProps) {
     return formatRows(rows, format, header);
   };
 
+  // ---- header keyboard focus ------------------------------------------------------------
+  const headerIndex = Math.min(headerCol, Math.max(0, colCount - 1));
+  // When the roving header is scrolled out (virtualized), the first rendered one takes Tab.
+  const tabbableHeader = virtualCols.some((vc) => vc.index === headerIndex) ? headerIndex : virtualCols[0]?.index;
+
+  const headerEl = (index: number) => scrollRef.current?.querySelector<HTMLElement>(`[data-header-col="${index}"]`);
+  const focusHeader = (index: number) => {
+    if (colCount === 0) return;
+    const target = Math.max(0, Math.min(colCount - 1, index));
+    setHeaderCol(target);
+    colVirtualizer.scrollToIndex(target, { align: 'auto' });
+    const el = headerEl(target);
+    if (el) el.focus({ preventScroll: true });
+    // Not rendered yet: the scroll above renders it, then the effect below focuses it.
+    else focusHeaderPending.current = target;
+  };
+  useEffect(() => {
+    const target = focusHeaderPending.current;
+    if (target === null) return;
+    const el = headerEl(target);
+    if (!el) return;
+    focusHeaderPending.current = null;
+    el.focus({ preventScroll: true });
+  });
+
+  /** Opens the header menu from the keyboard, anchored under the header. */
+  const openHeaderMenu = (el: HTMLElement) => {
+    const r = el.getBoundingClientRect();
+    el.dispatchEvent(
+      new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: r.left + 8, clientY: r.bottom }),
+    );
+  };
+
+  /** Back to the cells: the first visible row of the header's column. */
+  const focusBody = (col: number) => {
+    const el = scrollRef.current;
+    if (rowCount > 0) {
+      const row = Math.min(rowCount - 1, Math.ceil((el?.scrollTop ?? 0) / ROW_HEIGHT));
+      const pos = { row, col };
+      onSelectionChange({ anchor: pos, focus: pos });
+    }
+    el?.focus({ preventScroll: true });
+  };
+
+  const onHeaderKeyDown = (e: KeyboardEvent<HTMLDivElement>, index: number) => {
+    const { key } = e;
+    const handled = () => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    if (e.altKey && (key === 'ArrowLeft' || key === 'ArrowRight')) {
+      handled();
+      const to = index + (key === 'ArrowLeft' ? -1 : 1);
+      if (!canReorder || to < 0 || to >= colCount) return;
+      // The header element is keyed by column, so it keeps focus as it moves.
+      moveColumn(index, to);
+      colVirtualizer.scrollToIndex(to, { align: 'auto' });
+    } else if (key === 'ArrowLeft' || key === 'ArrowRight' || key === 'Home' || key === 'End') {
+      handled();
+      focusHeader(key === 'Home' ? 0 : key === 'End' ? colCount - 1 : index + (key === 'ArrowLeft' ? -1 : 1));
+    } else if (key === 'ArrowDown' || key === 'Escape') {
+      handled();
+      focusBody(index);
+    } else if (key === 'Enter' || key === ' ') {
+      // Also cancels the inner button's own activation, so a sort never runs twice.
+      handled();
+      onHeaderClick?.(index, { shiftKey: e.shiftKey });
+    } else if (key === 'ContextMenu' || (key === 'F10' && e.shiftKey)) {
+      handled();
+      if (hasColumnMenu) openHeaderMenu(e.currentTarget);
+    }
+  };
+
   const moveColumn = (from: number, to: number) => {
     if (!onColumnMove || from === to || from < 0 || to < 0 || from >= colCount || to >= colCount) return;
     const name = columns[from]!.name;
     onColumnMove(from, to);
+    setHeaderCol((h) => indexAfterMove(h, from, to));
     if (selection) {
       // The selection follows the moved column; a range collapses to its focused cell.
       const col = indexAfterMove(selection.focus.col, from, to);
@@ -251,6 +335,13 @@ export function DataGrid(props: DataGridProps) {
       return;
     }
     if (e.target !== e.currentTarget) return;
+    const meta = e.metaKey || e.ctrlKey;
+    if (e.key === 'ArrowUp' && !e.shiftKey && !e.altKey && !meta && selection && selection.focus.row === 0) {
+      // Up from the first row reaches the column headers (sort, move, header menu).
+      e.preventDefault();
+      focusHeader(selection.focus.col);
+      return;
+    }
     if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && canReorder) {
       e.preventDefault();
       if (selection) moveColumn(selection.focus.col, selection.focus.col + (e.key === 'ArrowLeft' ? -1 : 1));
@@ -261,7 +352,6 @@ export function DataGrid(props: DataGridProps) {
       cols: colCount,
       pageRows: Math.max(1, Math.floor((scrollRef.current?.clientHeight ?? 600) / ROW_HEIGHT) - 2),
     };
-    const meta = e.metaKey || e.ctrlKey;
     if (moveKeys[e.key]) {
       e.preventDefault();
       let key = moveKeys[e.key]!;
@@ -369,6 +459,7 @@ export function DataGrid(props: DataGridProps) {
     e.stopPropagation();
     e.currentTarget.setPointerCapture?.(e.pointerId);
     dragRef.current = { key, startX: e.clientX, startWidth: width, width };
+    onUserAdjust?.();
   };
   const moveResize = (e: PointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current;
@@ -407,6 +498,7 @@ export function DataGrid(props: DataGridProps) {
       d.moved = true;
       // Captured only once it is a drag, so a plain click still reaches the header button.
       el?.setPointerCapture?.(e.pointerId);
+      onUserAdjust?.();
     }
     if (el) {
       // Scroll when the pointer nears either side, so a column can travel past the viewport.
@@ -442,6 +534,16 @@ export function DataGrid(props: DataGridProps) {
   const headerTitle = canReorder
     ? [headerClickHint, `Drag to reorder; ${alt}← ${alt}→ move the selected column`].filter(Boolean).join(' · ')
     : headerClickHint;
+  const headerKeysHint = [
+    '← → move between headers',
+    onHeaderClick ? 'Enter sorts' : null,
+    canReorder ? `${alt}← ${alt}→ move the column` : null,
+    hasColumnMenu ? '⇧F10 opens the column menu' : null,
+    '↓ back to the cells',
+  ]
+    .filter(Boolean)
+    .join('; ');
+  const headerHintId = `${gridId}-header-keys`;
 
   return (
     <>
@@ -472,6 +574,7 @@ export function DataGrid(props: DataGridProps) {
             onMouseUp={() => (mouseSelectingRef.current = false)}
             onDoubleClick={onDoubleClick}
             onContextMenu={onContextMenu}
+            onScroll={onUserAdjust}
           >
             <div className="relative" style={{ width: totalWidth, height: Math.max(totalHeight, HEADER_HEIGHT) }}>
               <div
@@ -528,13 +631,18 @@ export function DataGrid(props: DataGridProps) {
                       aria-colindex={vc.index + 2}
                       aria-sort={sortLabel ?? 'none'}
                       data-header-col={vc.index}
+                      tabIndex={vc.index === tabbableHeader ? 0 : -1}
+                      aria-describedby={headerHintId}
                       className={cn(
-                        'bg-sidebar absolute top-0 flex h-full flex-col justify-center border-r border-b select-none',
+                        'bg-sidebar absolute top-0 flex h-full flex-col justify-center border-r border-b outline-none select-none',
+                        'focus-visible:ring-brand focus-visible:ring-2 focus-visible:ring-inset',
                         isRightAligned(col.kind) && 'items-end text-right',
                         dragged && 'bg-brand-soft shadow-[inset_0_-2px_0_var(--brand)]',
                       )}
                       style={{ left: vc.start, width: vc.size }}
                       onPointerDown={(e) => startHeaderDrag(e, vc.index)}
+                      onFocus={() => setHeaderCol(vc.index)}
+                      onKeyDown={(e) => onHeaderKeyDown(e, vc.index)}
                     >
                       {onHeaderClick ? (
                         <button
@@ -751,6 +859,9 @@ export function DataGrid(props: DataGridProps) {
       </ContextMenu>
       <span className="sr-only" aria-live="polite">
         {announcement}
+      </span>
+      <span id={headerHintId} className="sr-only">
+        {headerKeysHint}
       </span>
     </>
   );

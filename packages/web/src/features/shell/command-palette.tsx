@@ -96,7 +96,8 @@ export function CommandPalette({ open, onOpenChange, onCloseTab }: Props) {
       queryKey: queryKeys.schema(t.sid),
       queryFn: () => api.schema(t.sid),
       staleTime: Infinity,
-      enabled: open,
+      // A restored tab without a session has nothing to ask yet.
+      enabled: open && !t.restore,
     })),
   });
 
@@ -104,7 +105,8 @@ export function CommandPalette({ open, onOpenChange, onCloseTab }: Props) {
     queries: tabs.map((t) => ({
       queryKey: queryKeys.savedQueries(t.connectionId),
       queryFn: () => api.savedQueries(t.connectionId),
-      enabled: open,
+      // A restored tab without a session has nothing to ask yet.
+      enabled: open && !t.restore,
     })),
   });
 

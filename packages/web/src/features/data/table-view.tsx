@@ -14,6 +14,7 @@ import {
   Table2,
   Trash,
   Undo2,
+  Upload,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
@@ -30,6 +31,15 @@ import {
   type Table,
   type TableRef,
 } from '@kleos/shared';
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { ContextMenuItem } from '@/components/ui/context-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -49,10 +59,14 @@ import { DataGrid } from '@/features/grid/data-grid';
 import { selectedRows, tabSelection } from '@/features/grid/selection';
 import type { CellPos, GridCell, GridColumn, GridRowMeta, GridSelection } from '@/features/grid/types';
 import { ValueInspector } from '@/features/grid/value-inspector';
+import { ExportMenu } from '@/features/jobs/export-menu';
+import { runJob, useJobRunning } from '@/features/jobs/job-runner';
 import { api, ApiError, errorText, queryKeys } from '@/lib/api';
+import { getBridge } from '@/lib/bridge';
 import { FilterBar } from './filter-bar';
 import { chipsToFilters, foreignKeysByColumn, foreignKeyTarget, type FilterChip } from './filters';
 import { usePersistedGridLayout } from './grid-layout';
+import { ImportDialog, type ImportSettings } from './import-dialog';
 import { PendingPanel } from './pending-panel';
 import { renderPendingSql } from './pending-sql';
 import {
@@ -506,6 +520,52 @@ export function TableView({
     return () => window.removeEventListener('keydown', onKey);
   }, [active, counts.total, committing, commitNow]);
 
+  // ---- export and import ------------------------------------------------------------
+  const exportKey = `${sid}:export:${tk}`;
+  const importKey = `${sid}:import:${tk}`;
+  const importing = useJobRunning(importKey);
+  /** Tables only: views have nothing to insert into. */
+  const importable = !!info && (info.kind === 'table' || info.kind === 'partitioned');
+  const [importPath, setImportPath] = useState<string | null>(null);
+  const [askStaged, setAskStaged] = useState(false);
+
+  const pickImportFile = async () => {
+    const path = await getBridge().openFileDialog('csv');
+    if (path) setImportPath(path);
+  };
+  const startImportFlow = () => {
+    // An import is its own transaction; staged edits must not ride along or be left behind.
+    if (counts.total > 0) setAskStaged(true);
+    else void pickImportFile();
+  };
+  const refreshTable = useCallback(() => {
+    const sameTable = (q: Query) => {
+      const req = q.queryKey[2] as { table?: TableRef } | undefined;
+      return !!req?.table && tableKey(req.table) === tk;
+    };
+    void queryClient.invalidateQueries({ queryKey: ['rows', sid], predicate: sameTable });
+    void queryClient.invalidateQueries({ queryKey: ['count', sid], predicate: sameTable });
+  }, [queryClient, sid, tk]);
+  const runImport = (s: ImportSettings) => {
+    setImportPath(null);
+    void runJob({
+      kind: 'import',
+      sourceKey: importKey,
+      subject: table.name,
+      start: (jobId) =>
+        api.startImport(sid, {
+          jobId,
+          table,
+          path: s.path,
+          delimiter: s.delimiter,
+          hasHeader: s.hasHeader,
+          mapping: s.mapping,
+          nullValues: s.nullValues,
+        }),
+      onDone: refreshTable,
+    });
+  };
+
   // ---- view changes ---------------------------------------------------------------
   const setPage = (p: number) => {
     setSelection(null);
@@ -692,6 +752,38 @@ export function TableView({
             </Tooltip>
           </>
         )}
+        {importable &&
+          (readOnly ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                {/* A disabled button gets no pointer events; the wrapper carries the tooltip. */}
+                <span tabIndex={0} className="inline-flex rounded-md">
+                  <Button type="button" variant="outline" size="sm" disabled>
+                    <Upload aria-hidden="true" />
+                    Import CSV…
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>Read-only connection: importing is off.</TooltipContent>
+            </Tooltip>
+          ) : (
+            <Button type="button" variant="outline" size="sm" disabled={importing} onClick={startImportFlow}>
+              {importing ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Upload aria-hidden="true" />}
+              {importing ? 'Importing…' : 'Import CSV…'}
+            </Button>
+          ))}
+        <ExportMenu
+          sid={sid}
+          source={{ kind: 'table', table, filters, where, sort: view.sort }}
+          defaultName={table.name}
+          subject={table.name}
+          sourceKey={exportKey}
+          scopeNote={
+            filters.length > 0 || where
+              ? 'Exports every row matching the current filters, in the current sort, not just the loaded page.'
+              : 'Exports every row of the table, in the current sort, not just the loaded page.'
+          }
+        />
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -763,6 +855,7 @@ export function TableView({
             onColumnMove={onColumnMove}
             onResetColumns={onResetColumns}
             columnsCustomized={!isEmptyLayout(layout)}
+            onUserAdjust={persisted.touch}
             className={rowsQuery.isPlaceholderData ? 'opacity-60' : undefined}
             emptyState={
               loading ? (
@@ -886,6 +979,54 @@ export function TableView({
           <TooltipContent>Next page</TooltipContent>
         </Tooltip>
       </footer>
+      {info && (
+        <ImportDialog
+          table={table}
+          columns={info.columns}
+          path={importPath}
+          onClose={() => setImportPath(null)}
+          onImport={runImport}
+        />
+      )}
+      <AlertDialog open={askStaged} onOpenChange={setAskStaged}>
+        <AlertDialogContent size="sm" className="sm:max-w-sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-[15px]">
+              Commit or discard {counts.total} pending {counts.total === 1 ? 'change' : 'changes'} first
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs">
+              An import runs as its own transaction, so it can’t include the edits staged on {table.name}.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel size="sm">Cancel</AlertDialogCancel>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setAskStaged(false);
+                dispatch({ type: 'discard' });
+                setEditing(null);
+                void pickImportFile();
+              }}
+            >
+              Discard changes
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              disabled={committing}
+              onClick={() => {
+                setAskStaged(false);
+                commit.mutate(undefined, { onSuccess: () => void pickImportFile() });
+              }}
+            >
+              Commit changes
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <span className="sr-only" aria-live="polite">
         {counts.total > 0
           ? `${counts.total} staged change${counts.total === 1 ? '' : 's'}; ${isMac ? '⌘S' : 'Ctrl+S'} commits`

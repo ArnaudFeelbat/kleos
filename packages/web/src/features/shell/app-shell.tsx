@@ -9,7 +9,10 @@ import { WorkspaceScreen } from '@/features/workspace/workspace-screen';
 import { api, errorText, queryKeys } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { CommandPalette } from './command-palette';
+import { RestoredTab } from './restored-tab';
 import { HOME, tabsStore, useTabs, type ConnectionTab } from './tabs-store';
+import { useWindowRestore } from './use-window-restore';
+import { dropRestore } from './window-state';
 
 const isMac = typeof navigator !== 'undefined' && /Mac/.test(navigator.platform);
 const mod = isMac ? '⌘' : 'Ctrl+';
@@ -25,6 +28,8 @@ export function AppShell() {
   const favorites = useQuery({ queryKey: queryKeys.connections, queryFn: api.listConnections });
   const [paletteOpen, setPaletteOpen] = useState(false);
 
+  useWindowRestore(favorites.data, favorites.isError);
+
   useEffect(() => {
     if (favorites.data) tabsStore.syncConnections(favorites.data);
   }, [favorites.data]);
@@ -36,7 +41,13 @@ export function AppShell() {
 
   const closeTab = useCallback(
     (sid: string) => {
-      if (!tabsStore.close(sid)) return;
+      const tab = tabsStore.get().tabs.find((t) => t.sid === sid);
+      if (!tab || !tabsStore.close(sid)) return;
+      // A restored tab that never connected has no session, only the tabs it was keeping.
+      if (tab.restore) {
+        dropRestore(tab.connectionId);
+        return;
+      }
       void api.closeSession(sid).catch(() => undefined);
       queryClient.removeQueries({ predicate: (q) => q.queryKey.includes(sid) });
     },
@@ -131,7 +142,15 @@ export function AppShell() {
         </div>
         {tabs.map((tab) => (
           <div key={tab.sid} className={cn('min-h-0 flex-1', active === tab.sid ? 'flex' : 'hidden')}>
-            <WorkspaceScreen sid={tab.sid} visible={active === tab.sid} onClose={() => closeTab(tab.sid)} />
+            {tab.restore ? (
+              <RestoredTab
+                tab={tab}
+                favorite={favorites.data?.find((f) => f.id === tab.connectionId)}
+                onClose={() => closeTab(tab.sid)}
+              />
+            ) : (
+              <WorkspaceScreen sid={tab.sid} visible={active === tab.sid} onClose={() => closeTab(tab.sid)} />
+            )}
           </div>
         ))}
       </div>
@@ -175,7 +194,12 @@ function ConnectionTabButton({
       >
         <span
           aria-hidden="true"
-          className={cn('size-2 shrink-0 rounded-full', !dot && 'border-muted-foreground/60 border border-dashed')}
+          className={cn(
+            'size-2 shrink-0 rounded-full',
+            !dot && 'border-muted-foreground/60 border border-dashed',
+            // A restored tab without a session yet: the dot fades until it connects.
+            tab.restore && 'opacity-40',
+          )}
           style={dot ? { background: dot, boxShadow: `0 0 0 3px ${dot}22` } : undefined}
         />
         <span className="truncate">{tab.nickname}</span>

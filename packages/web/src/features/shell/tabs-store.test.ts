@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { SessionInfo } from '@kleos/shared';
-import { HOME, tabsStore } from './tabs-store';
+import { HOME, restoreTabId, tabsStore } from './tabs-store';
 
 function session(sid: string, connectionId: string, nickname = connectionId): SessionInfo {
   return {
@@ -73,5 +73,31 @@ describe('tabsStore', () => {
     tabsStore.open(session('s1', 'c1', 'old'));
     tabsStore.syncConnections([{ id: 'c1', nickname: 'new', color: 'red', readOnly: true }]);
     expect(tabsStore.get().tabs[0]).toMatchObject({ nickname: 'new', color: 'red', readOnly: true });
+  });
+
+  it('puts restored tabs back in order and swaps each for its session in place, without stealing focus', () => {
+    tabsStore.restore([session('', 'c1').connection, session('', 'c2').connection], 'c2');
+    expect(tabsStore.get().tabs.map((t) => t.sid)).toEqual([restoreTabId('c1'), restoreTabId('c2')]);
+    expect(tabsStore.get().active).toBe(restoreTabId('c2'));
+
+    tabsStore.open(session('s1', 'c1'), { focus: false });
+    expect(tabsStore.get().tabs.map((t) => t.sid)).toEqual(['s1', restoreTabId('c2')]);
+    expect(tabsStore.get().tabs[0]!.restore).toBeUndefined();
+    expect(tabsStore.get().active).toBe(restoreTabId('c2'));
+
+    tabsStore.needsReconnect('c2', 'Its password isn’t saved in the Keychain.');
+    expect(tabsStore.get().tabs[1]!.restore).toEqual({
+      state: 'reconnect',
+      reason: 'Its password isn’t saved in the Keychain.',
+    });
+    // The tab in front was that restored one: it stays in front as it gains its session.
+    tabsStore.open(session('s2', 'c2'), { focus: false });
+    expect(tabsStore.get()).toMatchObject({ active: 's2', tabs: [{ sid: 's1' }, { sid: 's2' }] });
+  });
+
+  it('a quiet open of a new server leaves the front tab alone', () => {
+    tabsStore.open(session('s1', 'c1'));
+    tabsStore.open(session('s2', 'c2'), { focus: false });
+    expect(tabsStore.get().active).toBe('s1');
   });
 });

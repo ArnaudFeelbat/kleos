@@ -1,5 +1,5 @@
-import { KeyRound, LoaderCircle } from 'lucide-react';
-import { useState } from 'react';
+import { KeyRound, LoaderCircle, type LucideIcon } from 'lucide-react';
+import { useId, useState, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -13,35 +13,92 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Callout } from '@/features/common/callout';
-import { connectionSubtitle } from './form-model';
-import type { PasswordPrompt } from './use-connect';
+import type { CredentialPrompt } from './credential-flow';
 
 type Props = {
-  prompt: PasswordPrompt | null;
-  onSubmit(password: string, remember: boolean): void;
+  prompt: CredentialPrompt | null;
+  onSubmit(secret: string, remember: boolean): void;
   onCancel(): void;
+};
+
+type SecretCopy = {
+  icon: LucideIcon;
+  title: ReactNode;
+  description: ReactNode;
+  label: string;
+  rememberLabel: string;
 };
 
 /** Asked when the server answers 401 KLEOS_PASSWORD_REQUIRED on Connect. */
 export function PasswordDialog({ prompt, onSubmit, onCancel }: Props) {
+  const shown = prompt?.kind === 'password' ? prompt : null;
+  return (
+    <SecretDialog
+      prompt={shown}
+      icon={KeyRound}
+      title={shown && `Password for ${shown.target.name}`}
+      description={
+        shown && (
+          <>
+            <Mono>{shown.target.subtitle}</Mono> needs a password. None is saved for this favorite.
+          </>
+        )
+      }
+      label="Password"
+      rememberLabel="Save password in Keychain"
+      onSubmit={onSubmit}
+      onCancel={onCancel}
+    />
+  );
+}
+
+/** Inline code chip used in prompt descriptions. */
+export function Mono({ children }: { children: ReactNode }) {
+  return <span className="bg-muted text-foreground/80 rounded px-1 py-px font-mono text-[11.5px]">{children}</span>;
+}
+
+/**
+ * A dialog asking for one secret (a password, an SSH key passphrase) with "Save in Keychain".
+ * Shown while `prompt` is set; the error of the last try stays under the field.
+ */
+export function SecretDialog({ prompt, onSubmit, onCancel, ...copy }: Props & SecretCopy) {
   return (
     <Dialog open={prompt !== null} onOpenChange={(open) => !open && onCancel()}>
-      {prompt && <PasswordForm key={prompt.connection.id} prompt={prompt} onSubmit={onSubmit} onCancel={onCancel} />}
+      {prompt && (
+        <SecretForm
+          key={`${prompt.kind}:${prompt.target.subtitle}`}
+          prompt={prompt}
+          onSubmit={onSubmit}
+          onCancel={onCancel}
+          {...copy}
+        />
+      )}
     </Dialog>
   );
 }
 
-function PasswordForm({ prompt, onSubmit, onCancel }: Props & { prompt: PasswordPrompt }) {
-  const [password, setPassword] = useState('');
+function SecretForm({
+  prompt,
+  onSubmit,
+  onCancel,
+  icon: Icon,
+  title,
+  description,
+  label,
+  rememberLabel,
+}: Props & SecretCopy & { prompt: CredentialPrompt }) {
+  const [secret, setSecret] = useState('');
   const [remember, setRemember] = useState(false);
-  const { connection } = prompt;
+  const fieldId = useId();
   return (
     <DialogContent className="sm:max-w-md">
       <form
         className="flex flex-col gap-4"
         onSubmit={(e) => {
           e.preventDefault();
-          onSubmit(password, remember);
+          // Portalled, but React events still bubble to an enclosing form (the connection form).
+          e.stopPropagation();
+          onSubmit(secret, remember);
         }}
       >
         <DialogHeader className="flex-row items-start gap-3.5">
@@ -49,34 +106,29 @@ function PasswordForm({ prompt, onSubmit, onCancel }: Props & { prompt: Password
             aria-hidden="true"
             className="surface-raised flex size-10 shrink-0 items-center justify-center rounded-xl"
           >
-            <KeyRound className="text-brand-text size-[18px]" />
+            <Icon className="text-brand-text size-[18px]" />
           </span>
           <div className="flex min-w-0 flex-col gap-1.5">
-            <DialogTitle>Password for {connection.nickname}</DialogTitle>
-            <DialogDescription className="text-[12.5px] leading-relaxed">
-              <span className="bg-muted text-foreground/80 rounded px-1 py-px font-mono text-[11.5px]">
-                {connectionSubtitle(connection)}
-              </span>{' '}
-              needs a password. None is saved for this favorite.
-            </DialogDescription>
+            <DialogTitle>{title}</DialogTitle>
+            <DialogDescription className="text-[12.5px] leading-relaxed">{description}</DialogDescription>
           </div>
         </DialogHeader>
         <div className="flex flex-col gap-2">
-          <Label htmlFor="prompt-password" className="text-foreground/80 text-xs">
-            Password
+          <Label htmlFor={fieldId} className="text-foreground/80 text-xs">
+            {label}
           </Label>
           <Input
-            id="prompt-password"
+            id={fieldId}
             type="password"
             autoFocus
             autoComplete="off"
             className="h-8"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            value={secret}
+            onChange={(e) => setSecret(e.target.value)}
           />
           <Label className="flex items-center gap-2 text-xs font-normal">
             <Checkbox checked={remember} onCheckedChange={(v) => setRemember(v === true)} />
-            Save password in Keychain
+            {rememberLabel}
           </Label>
         </div>
         {prompt.error && (
