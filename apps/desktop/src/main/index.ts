@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BrowserWindow, app, ipcMain, nativeTheme, shell } from 'electron';
+import { BrowserWindow, app, dialog, ipcMain, nativeTheme, shell } from 'electron';
 import { startServer, type RunningServer } from '@kleos/server';
 import { installMenu, type ShellCommand } from './menu';
 import { isAppearance, loadPreferences, savePreferences, type Appearance } from './preferences';
@@ -114,6 +114,40 @@ function toggleAppearance(): void {
 }
 
 ipcMain.handle('kleos:get-appearance', () => appearance);
+
+// --- Files: export and import pick paths through native dialogs; the server reads/writes them. ---
+const exportFilters: Record<string, Electron.FileFilter> = {
+  csv: { name: 'CSV', extensions: ['csv'] },
+  json: { name: 'JSON', extensions: ['json'] },
+  xlsx: { name: 'Excel workbook', extensions: ['xlsx'] },
+};
+
+ipcMain.handle('kleos:save-dialog', async (event, args: { defaultName?: unknown; format?: unknown }) => {
+  const format = typeof args?.format === 'string' && args.format in exportFilters ? args.format : 'csv';
+  const name = typeof args?.defaultName === 'string' ? args.defaultName.replace(/[/\\:]/g, '-') : 'export';
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const options: Electron.SaveDialogOptions = {
+    defaultPath: join(app.getPath('downloads'), `${name}.${format}`),
+    filters: [exportFilters[format]!],
+    properties: ['createDirectory', 'showOverwriteConfirmation'],
+  };
+  const result = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options);
+  return result.canceled || !result.filePath ? null : result.filePath;
+});
+
+ipcMain.handle('kleos:open-dialog', async (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const options: Electron.OpenDialogOptions = {
+    properties: ['openFile'],
+    filters: [{ name: 'CSV or TSV', extensions: ['csv', 'tsv', 'txt'] }],
+  };
+  const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
+  return result.canceled ? null : (result.filePaths[0] ?? null);
+});
+
+ipcMain.on('kleos:reveal', (_event, path: unknown) => {
+  if (typeof path === 'string' && path.startsWith('/')) shell.showItemInFolder(path);
+});
 ipcMain.on('kleos:set-appearance', (_event, mode: unknown) => {
   if (isAppearance(mode)) setAppearance(mode);
 });

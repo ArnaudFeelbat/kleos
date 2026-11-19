@@ -25,6 +25,8 @@
   },
   "dependencies": {
     "@napi-rs/keyring": "^2.1.2",
-    "better-sqlite3": "^13.2.0"
+    "better-sqlite3": "^13.2.0",
+    "exceljs": "^4.4.0",
+    "ssh2": "^1.17.0"
   }
 }

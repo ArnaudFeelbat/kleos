@@ -28,6 +28,13 @@
  *   PUT    /layouts/:connectionId/:schema LayoutPositions -> 204
  *   GET    /grid-layouts/:connectionId/:schema/:table -> GridLayout (empty when none saved)
  *   PUT    /grid-layouts/:connectionId/:schema/:table GridLayout -> 204
+ *   POST   /sessions/:sid/exports ExportRequest       -> JobStatus (202; runs in the background)        (0.4)
+ *   POST   /imports/preview      ImportPreviewRequest -> ImportPreview                                 (0.4)
+ *   POST   /sessions/:sid/imports ImportRequest       -> JobStatus (202; one transaction, all or nothing) (0.4)
+ *   GET    /jobs/:jobId                              -> JobStatus                                      (0.4)
+ *   POST   /jobs/:jobId/cancel                       -> 204                                            (0.4)
+ *   GET    /window-state                             -> WindowState (empty when none saved)            (0.4)
+ *   PUT    /window-state          WindowState        -> 204                                            (0.4)
  *   GET    /history/:connectionId?limit=200          -> HistoryEntry[] (newest first)
  *   POST   /history/:connectionId NewHistoryEntry    -> HistoryEntry
  *   GET    /saved-queries?connectionId=              -> SavedQuery[]

@@ -51,6 +51,9 @@ beforeEach(() => {
     closeWindow: vi.fn(),
     getAppearance: vi.fn(async () => 'system' as const),
     setAppearance: vi.fn(),
+    saveFileDialog: vi.fn(async () => null),
+    openFileDialog: vi.fn(async () => null),
+    revealInFinder: vi.fn(),
     onCommand: vi.fn(() => () => {}),
   };
   mocked.schema.mockResolvedValue(shopModel());

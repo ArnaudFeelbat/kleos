@@ -15,9 +15,12 @@
     "@kleos/shared": "workspace:*",
     "@napi-rs/keyring": "^2.1.2",
     "better-sqlite3": "^13.2.0",
+    "csv-parse": "^7.0.3",
+    "exceljs": "^4.4.0",
     "hono": "^4.13.19",
     "pg": "^8.23.1",
     "pg-cursor": "^2.22.1",
+    "ssh2": "^1.17.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {
@@ -25,6 +28,7 @@
     "@types/better-sqlite3": "^9.6.0",
     "@types/pg": "^8.23.1",
     "@types/pg-cursor": "^2.7.2",
+    "@types/ssh2": "^1.15.6",
     "testcontainers": "^12.2.1"
   }
 }
