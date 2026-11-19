@@ -5,6 +5,9 @@ consistent with how it is built.
 
 ## Before you start
 
+- Kleos is [MIT-licensed](LICENSE); by contributing you agree your changes are released under
+  the same license.
+
 - For anything larger than a fix, open an issue first so we can agree on the approach.
 - Read the [spec](docs/SPEC.md) for the product rules (exact values as text, staged edits in
   one transaction, read-only enforced by Postgres, …).

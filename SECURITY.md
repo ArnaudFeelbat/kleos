@@ -5,9 +5,10 @@ security reports are taken seriously.
 
 ## Reporting a vulnerability
 
-Please **do not open an issue** for a vulnerability. Contact the maintainer privately via
-the [GitHub profile](https://github.com/ArnaudFeelbat) instead, with the version, steps to
-reproduce, and the impact you expect.
+Please **do not open an issue** for a vulnerability. Report it privately through
+[GitHub's private vulnerability reporting](https://github.com/ArnaudFeelbat/kleos/security/advisories/new)
+(Security tab › Report a vulnerability), with the version, steps to reproduce, and the impact
+you expect.
 
 You can expect an acknowledgement within a few days and a fix or mitigation plan once the
 issue is confirmed.
@@ -24,6 +25,8 @@ In scope, for example:
   another app or web page;
 - a way to write through a **read-only** favorite;
 - SQL built from user input outside the raw `WHERE` box and the query editor;
-- passwords leaking outside the Keychain (logs, `app.db`, crash output).
+- passwords leaking outside the Keychain (logs, `app.db`, crash output);
+- the update check sending anything beyond its single request to GitHub, or calling out
+  before the user allowed it.
 
 Out of scope: anything that requires an already compromised Mac or database account.
