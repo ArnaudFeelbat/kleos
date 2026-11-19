@@ -33,6 +33,29 @@ jobs:
       - name: Package
         run: pnpm package
 
+      # Kleos is not notarized, so the published SHA-256 is how a download can be checked:
+      # `shasum -a 256 -c Kleos-<version>-arm64.dmg.sha256` beside the DMG.
+      - name: Checksum
+        working-directory: apps/desktop/release
+        run: |
+          dmg=$(ls *.dmg)
+          shasum -a 256 "$dmg" > "$dmg.sha256"
+          sum=$(cut -d ' ' -f 1 "$dmg.sha256")
+          bytes=$(stat -f %z "$dmg")
+          mb=$(( bytes / 1000000 ))
+          {
+            echo "### $dmg"
+            echo
+            echo "| SHA-256 | Size |"
+            echo "| --- | --- |"
+            echo "| \`$sum\` | $mb MB |"
+            echo
+            echo "Check a download with \`shasum -a 256 -c $dmg.sha256\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$bytes" -gt 150000000 ]; then
+            echo "::warning::$dmg is $mb MB, over the 150 MB budget."
+          fi
+
       - name: Attach to the release
         if: startsWith(github.ref, 'refs/tags/')
         env:
@@ -41,9 +64,9 @@ jobs:
           tag="${GITHUB_REF_NAME}"
           dmg=$(ls apps/desktop/release/*.dmg)
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" $dmg --clobber
+            gh release upload "$tag" "$dmg" "$dmg.sha256" --clobber
           else
-            gh release create "$tag" $dmg --draft --title "Kleos ${tag#v}" --notes "See CHANGELOG.md."
+            gh release create "$tag" "$dmg" "$dmg.sha256" --draft --title "Kleos ${tag#v}" --notes "See CHANGELOG.md."
           fi
 
       - name: Keep the build
@@ -51,4 +74,6 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: kleos-dmg
-          path: apps/desktop/release/*.dmg
+          path: |
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.dmg.sha256
