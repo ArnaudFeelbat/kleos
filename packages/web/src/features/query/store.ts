@@ -1,5 +1,13 @@
 import { useSyncExternalStore } from 'react';
-import type { ApiErrorBody, CellValue, ChartSettings, ColumnMeta, ExplainResult, SavedQuery } from '@kleos/shared';
+import type {
+  ApiErrorBody,
+  CellValue,
+  ChartSettings,
+  ColumnMeta,
+  ExplainResult,
+  RestoredQueryTab,
+  SavedQuery,
+} from '@kleos/shared';
 import { api, ApiError, errorText } from '@/lib/api';
 import { sameChart } from './chart-data';
 import type { RunTarget } from './run-target';
@@ -108,6 +116,69 @@ function setWorkspace(sid: string, fn: (ws: QueryWorkspace) => QueryWorkspace) {
 export function resetQueryWorkspaces() {
   workspaces.clear();
   emit();
+}
+
+/** Notified on every change of any session's query tabs (the window state follows them). */
+export function subscribeQueryWorkspaces(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+/** The session's query tabs if it has any yet, without creating the default "Query 1". */
+export function peekQueryWorkspace(sid: string): QueryWorkspace | undefined {
+  return workspaces.get(sid);
+}
+
+/** What the window remembers of one query tab: never results, only what the user wrote. */
+export function persistedQueryTabs(ws: QueryWorkspace): { tabs: RestoredQueryTab[]; active: number } {
+  return {
+    tabs: ws.tabs.map((t) => ({ title: t.title, sql: t.sql, chart: t.chart, savedQueryId: t.saved?.id ?? null })),
+    active: Math.max(
+      0,
+      ws.tabs.findIndex((t) => t.id === ws.activeId),
+    ),
+  };
+}
+
+/**
+ * Puts back the query tabs of the last window for a freshly opened session. A tab from a saved
+ * query is linked to it by id; its saved SQL is only known once `relinkSavedQueries` runs, so
+ * until then it counts as unchanged. Does nothing without tabs.
+ */
+export function restoreQueryTabs(sid: string, restored: RestoredQueryTab[], activeIndex: number) {
+  if (restored.length === 0) return;
+  const numbers = restored.map((r) => /^Query (\d+)$/.exec(r.title)?.[1]).filter((n) => n !== undefined);
+  const counter = Math.max(restored.length, ...numbers.map(Number)) + 1;
+  const tabs = restored.map((r) =>
+    newTab(0, {
+      title: r.title,
+      sql: r.sql,
+      chart: r.chart,
+      view: r.chart ? 'chart' : 'results',
+      saved: r.savedQueryId ? { id: r.savedQueryId, name: r.title, sql: r.sql, chart: r.chart } : null,
+    }),
+  );
+  const active = tabs[Math.min(Math.max(0, activeIndex), tabs.length - 1)]!;
+  workspaces.set(sid, { tabs, activeId: active.id, counter, draftNonce: null });
+  emit();
+}
+
+/**
+ * Links restored tabs to their saved queries as they are now, so unsaved edits from the last
+ * session show as such; a tab whose saved query is gone keeps its SQL as a plain tab.
+ */
+export function relinkSavedQueries(sid: string, saved: SavedQuery[]) {
+  setWorkspace(sid, (ws) => {
+    let changed = false;
+    const tabs = ws.tabs.map((t) => {
+      if (!t.saved) return t;
+      const q = saved.find((s) => s.id === t.saved!.id);
+      const ref: SavedRef | null = q ? { id: q.id, name: q.name, sql: q.sql, chart: q.chart } : null;
+      changed = true;
+      return { ...t, saved: ref };
+    });
+    return changed ? { ...ws, tabs } : ws;
+  });
 }
 
 export function useQueryWorkspace(sid: string): QueryWorkspace {

@@ -7,6 +7,8 @@ import {
   emptyGridLayout,
   type Column,
   type GridLayout,
+  type ImportPreview,
+  type JobStatus,
   type RowsPage,
   type SchemaModel,
   type Table,
@@ -15,6 +17,8 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { WorkspaceContext, type WorkspaceState } from '@/features/workspace/context';
 import type * as apiModule from '@/lib/api';
 import { api, ApiError } from '@/lib/api';
+import { resetExportOptions } from '@/features/jobs/export-menu';
+import { stopJobPolling } from '@/features/jobs/job-runner';
 import { DataTab } from './data-tab';
 import { getTableView, resetTableViews, updateTableView } from './table-state';
 
@@ -28,6 +32,11 @@ vi.mock('@/lib/api', async (importOriginal) => {
       applyEdits: vi.fn(),
       getGridLayout: vi.fn(),
       saveGridLayout: vi.fn(),
+      startExport: vi.fn(),
+      importPreview: vi.fn(),
+      startImport: vi.fn(),
+      job: vi.fn(),
+      cancelJob: vi.fn(),
     },
   };
 });
@@ -163,7 +172,11 @@ beforeEach(() => {
     req.exact ? { count: '1204377', exact: true } : { count: '1204380', exact: false },
   );
 });
-afterEach(() => vi.clearAllMocks());
+afterEach(() => {
+  stopJobPolling();
+  resetExportOptions();
+  vi.clearAllMocks();
+});
 
 describe('DataTab', () => {
   it('asks for a table when none is selected', () => {
@@ -559,5 +572,286 @@ describe('DataTab column layout', () => {
         widths: { ...widths100, total: 180 },
       }),
     );
+  });
+});
+
+describe('DataTab header keyboard', () => {
+  it('reaches the headers from the first row, moves between them, sorts with Enter and moves columns with ⌥→', async () => {
+    const user = userEvent.setup();
+    renderTab();
+    await user.click(await screen.findByText('100512'));
+    await user.keyboard('{ArrowUp}');
+    const idHeader = screen.getByRole('columnheader', { name: /^Primary keyid/ });
+    expect(idHeader).toHaveFocus();
+    expect(idHeader).toHaveAttribute('tabindex', '0');
+    expect(idHeader).toHaveAttribute('aria-sort', 'none');
+
+    await user.keyboard('{ArrowRight}');
+    const customerHeader = screen.getByRole('columnheader', { name: /^customer_id/ });
+    expect(customerHeader).toHaveFocus();
+    expect(customerHeader).toHaveAttribute('tabindex', '0');
+    expect(idHeader).toHaveAttribute('tabindex', '-1');
+
+    await user.keyboard('{Enter}');
+    await waitFor(() =>
+      expect(mocked.rows).toHaveBeenLastCalledWith(
+        'sid-1',
+        expect.objectContaining({ sort: [{ column: 'customer_id', dir: 'asc' }] }),
+      ),
+    );
+    expect(screen.getByRole('columnheader', { name: /^customer_id/ })).toHaveAttribute('aria-sort', 'ascending');
+
+    await user.keyboard('{Alt>}{ArrowRight}{/Alt}');
+    expect(firstRow()).toEqual(['100512', 'paid', uuid1, '129.90', 'NULL']);
+    expect(screen.getByRole('columnheader', { name: /^customer_id/ })).toHaveFocus();
+    await waitFor(() =>
+      expect(mocked.saveGridLayout).toHaveBeenCalledWith('c1', 'public', 'orders', {
+        order: ['id', 'status', 'customer_id', 'total', 'note'],
+        widths: {},
+      }),
+    );
+
+    await user.keyboard('{ArrowDown}');
+    expect(screen.getByRole('grid')).toHaveFocus();
+  });
+
+  it('opens the column menu from a header with ⇧F10', async () => {
+    const user = userEvent.setup();
+    renderTab();
+    await screen.findByText('100512');
+    screen.getByRole('columnheader', { name: /^status/ }).focus();
+    await user.keyboard('{Shift>}{F10}{/Shift}');
+    const menu = await screen.findByRole('menu');
+    await user.click(within(menu).getByRole('menuitem', { name: /Move column left/ }));
+    expect(firstRow()).toEqual(['100512', 'paid', uuid1, '129.90', 'NULL']);
+  });
+});
+
+describe('DataTab late column layout', () => {
+  const late: GridLayout = { order: ['note'], widths: {} };
+
+  it('applies a remembered layout that comes after the first paint while the grid is untouched', async () => {
+    let resolve!: (layout: GridLayout) => void;
+    mocked.getGridLayout.mockReturnValue(new Promise((r) => (resolve = r)));
+    renderTab();
+    await screen.findByText('100512', undefined, { timeout: 2000 });
+    expect(firstRow()[0]).toBe('100512');
+    resolve(late);
+    await waitFor(() => expect(firstRow()[0]).toBe('NULL'));
+  });
+
+  it('keeps the columns where they are once the user scrolled', async () => {
+    let resolve!: (layout: GridLayout) => void;
+    mocked.getGridLayout.mockReturnValue(new Promise((r) => (resolve = r)));
+    renderTab();
+    await screen.findByText('100512', undefined, { timeout: 2000 });
+    fireEvent.scroll(screen.getByRole('grid'));
+    resolve(late);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(firstRow()).toEqual(['100512', uuid1, 'paid', '129.90', 'NULL']);
+  });
+});
+
+describe('DataTab export and import', () => {
+  const saveFileDialog = vi.fn();
+  const openFileDialog = vi.fn();
+  const running = (patch: Partial<JobStatus> = {}): JobStatus => ({
+    jobId: 'j',
+    kind: 'export',
+    state: 'running',
+    rows: 0,
+    bytes: 0,
+    totalBytes: null,
+    path: '/Users/me/Downloads/orders.csv',
+    startedAt: '2026-11-19T10:00:00Z',
+    finishedAt: null,
+    error: null,
+    ...patch,
+  });
+  const preview: ImportPreview = {
+    path: '/Users/me/orders.csv',
+    delimiter: ',',
+    columns: ['ID', 'Status', 'total', 'extra'],
+    rows: [
+      ['1', 'paid', '10.00', 'x'],
+      ['2', 'pending', '', 'y'],
+    ],
+    totalRows: 1204331,
+    bytes: 10276044,
+  };
+
+  beforeEach(() => {
+    window.kleos = { saveFileDialog, openFileDialog, revealInFinder: vi.fn() } as unknown as typeof window.kleos;
+    // Radix Select asks for pointer capture, which jsdom lacks.
+    Element.prototype.hasPointerCapture ??= () => false;
+    Element.prototype.releasePointerCapture ??= () => {};
+    mocked.importPreview.mockImplementation(async (req) => ({
+      ...preview,
+      delimiter: req.delimiter ?? ',',
+      columns: req.hasHeader === false ? ['column 1', 'column 2', 'column 3', 'column 4'] : preview.columns,
+    }));
+  });
+  afterEach(() => {
+    delete window.kleos;
+  });
+
+  it('exports every matching row with the current filters, WHERE and sort', async () => {
+    const user = userEvent.setup();
+    updateTableView('sid-1', 'public.orders', (s) => ({
+      ...s,
+      chips: [{ id: 'a', column: 'status', op: 'eq', value: 'paid' }],
+      where: 'total > 100',
+      sort: [{ column: 'total', dir: 'desc' }],
+    }));
+    saveFileDialog.mockResolvedValueOnce(null).mockResolvedValueOnce('/Users/me/Downloads/orders.csv');
+    mocked.startExport.mockResolvedValue(running({ state: 'done', rows: 2 }));
+    renderTab();
+    await screen.findByText('100512');
+
+    await user.click(screen.getByRole('button', { name: /Export/ }));
+    const menu = await screen.findByRole('menu');
+    expect(menu).toHaveTextContent(
+      'Exports every row matching the current filters, in the current sort, not just the loaded page.',
+    );
+    await user.click(within(menu).getByRole('menuitem', { name: /JSON/ }));
+    await waitFor(() => expect(saveFileDialog).toHaveBeenCalledWith({ defaultName: 'orders', format: 'json' }));
+    expect(mocked.startExport).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: /Export/ }));
+    await user.click(within(await screen.findByRole('menu')).getByRole('menuitem', { name: /^CSV ?comma, header/ }));
+    await waitFor(() => expect(mocked.startExport).toHaveBeenCalled());
+    expect(mocked.startExport).toHaveBeenCalledWith('sid-1', {
+      jobId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      source: {
+        kind: 'table',
+        table: { schema: 'public', name: 'orders' },
+        filters: [{ column: 'status', op: 'eq', value: 'paid' }],
+        where: 'total > 100',
+        sort: [{ column: 'total', dir: 'desc' }],
+      },
+      format: 'csv',
+      path: '/Users/me/Downloads/orders.csv',
+      csv: { delimiter: ',', header: true },
+    });
+  });
+
+  it('turns the export off while one runs on the same table', async () => {
+    const user = userEvent.setup();
+    saveFileDialog.mockResolvedValue('/Users/me/Downloads/orders.xlsx');
+    mocked.startExport.mockResolvedValue(running());
+    mocked.job.mockReturnValue(new Promise(() => {}));
+    renderTab();
+    await screen.findByText('100512');
+    await user.click(screen.getByRole('button', { name: /Export/ }));
+    await user.click(within(await screen.findByRole('menu')).getByRole('menuitem', { name: /Excel workbook/ }));
+    expect(await screen.findByRole('button', { name: /Exporting/ })).toBeDisabled();
+  });
+
+  it('previews a CSV, maps columns by name, and imports in a job that refreshes the grid', async () => {
+    const user = userEvent.setup();
+    openFileDialog.mockResolvedValue('/Users/me/orders.csv');
+    mocked.startImport.mockResolvedValue(running({ kind: 'import', state: 'done', rows: 1204331 }));
+    renderTab();
+    await screen.findByText('100512');
+    await user.click(screen.getByRole('button', { name: 'Import CSV…' }));
+    expect(openFileDialog).toHaveBeenCalledWith('csv');
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('Import CSV into orders')).toBeInTheDocument();
+    expect(await within(dialog).findByText(/9\.8 MB · 1,204,331 rows/)).toBeInTheDocument();
+    expect(mocked.importPreview).toHaveBeenCalledWith({
+      path: '/Users/me/orders.csv',
+      delimiter: undefined,
+      hasHeader: true,
+    });
+    expect(within(dialog).getByLabelText('Table column for ID')).toHaveTextContent('id');
+    expect(within(dialog).getByLabelText('Table column for Status')).toHaveTextContent('status');
+    expect(within(dialog).getByLabelText('Table column for extra')).toHaveTextContent('Skip');
+    expect(dialog).toHaveTextContent('Not in the file, so they take their default: customer_id, note.');
+    const landed = within(dialog).getByRole('table', { name: 'Rows as they will land' });
+    expect(within(landed).getAllByRole('row')[2]).toHaveTextContent('2pendingNULL');
+
+    // Another delimiter reads the file again.
+    await user.click(within(dialog).getByLabelText('Delimiter'));
+    await user.click(await screen.findByRole('option', { name: 'Semicolon' }));
+    await waitFor(() =>
+      expect(mocked.importPreview).toHaveBeenLastCalledWith({
+        path: '/Users/me/orders.csv',
+        delimiter: ';',
+        hasHeader: true,
+      }),
+    );
+    // Without a header the columns fill the table in order.
+    await user.click(within(dialog).getByRole('switch', { name: 'First row is a header' }));
+    await waitFor(() =>
+      expect(within(dialog).getByLabelText('Table column for column 2')).toHaveTextContent('customer_id'),
+    );
+    await user.click(within(dialog).getByRole('switch', { name: 'First row is a header' }));
+    await waitFor(() => expect(within(dialog).getByLabelText('Table column for ID')).toHaveTextContent('id'));
+
+    await user.type(within(dialog).getByLabelText('Treat as NULL'), 'NULL');
+    const rowsBefore = mocked.rows.mock.calls.length;
+    await user.click(within(dialog).getByRole('button', { name: 'Import 1,204,331 rows' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(mocked.startImport).toHaveBeenCalledWith('sid-1', {
+      jobId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      table: { schema: 'public', name: 'orders' },
+      path: '/Users/me/orders.csv',
+      delimiter: ';',
+      hasHeader: true,
+      mapping: [
+        { fileColumn: 0, column: 'id' },
+        { fileColumn: 1, column: 'status' },
+        { fileColumn: 2, column: 'total' },
+      ],
+      nullValues: ['', 'NULL'],
+    });
+    await waitFor(() => expect(mocked.rows.mock.calls.length).toBeGreaterThan(rowsBefore));
+  });
+
+  it('warns about a NOT NULL column without a default that the file leaves out', async () => {
+    const user = userEvent.setup();
+    openFileDialog.mockResolvedValue('/Users/me/orders.csv');
+    mocked.importPreview.mockResolvedValue({ ...preview, columns: ['total'], rows: [['1']] });
+    const strict: Table = {
+      ...orders,
+      columns: orders.columns.map((c) => (c.name === 'status' ? { ...c, nullable: false } : c)),
+    };
+    renderTab({ schemaModel: { ...model, tables: [strict, customers] } });
+    await screen.findByText('100512');
+    await user.click(screen.getByRole('button', { name: 'Import CSV…' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(await within(dialog).findByRole('note')).toHaveTextContent('status: NOT NULL without a default');
+  });
+
+  it('asks to commit or discard staged edits before importing', async () => {
+    const user = userEvent.setup();
+    openFileDialog.mockResolvedValue(null);
+    renderTab();
+    await user.dblClick(await screen.findByText('1249.00'));
+    const input = screen.getByLabelText('total value');
+    await user.clear(input);
+    await user.type(input, '1194.00{Enter}');
+
+    await user.click(screen.getByRole('button', { name: 'Import CSV…' }));
+    const ask = await screen.findByRole('alertdialog');
+    expect(ask).toHaveTextContent('Commit or discard 1 pending change first');
+    expect(openFileDialog).not.toHaveBeenCalled();
+    await user.click(within(ask).getByRole('button', { name: 'Discard changes' }));
+    await waitFor(() => expect(openFileDialog).toHaveBeenCalledWith('csv'));
+    expect(screen.queryByLabelText('Pending changes')).not.toBeInTheDocument();
+  });
+
+  it('offers no import on views and explains it is off on read-only connections', async () => {
+    const { unmount } = renderTab({ selectedTable: { schema: 'public', name: 'order_totals' } });
+    await screen.findByText('100512');
+    expect(screen.queryByRole('button', { name: 'Import CSV…' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Export/ })).toBeEnabled();
+    unmount();
+
+    renderTab({ readOnly: true });
+    await screen.findByText('100512');
+    expect(screen.getByRole('button', { name: 'Import CSV…' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Export/ })).toBeEnabled();
   });
 });

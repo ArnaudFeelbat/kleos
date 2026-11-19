@@ -1,16 +1,18 @@
 import { kleosErrorCodes, type SessionInfo, type TableRef } from '@kleos/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Activity, Code, LoaderCircle, Lock, Network, Table2, Unplug } from 'lucide-react';
+import { Activity, Code, Info, LoaderCircle, Lock, Network, Table2, Unplug } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { DataTab } from '@/features/data/data-tab';
 import { MonitorTab } from '@/features/monitor/monitor-tab';
 import { QueryTab } from '@/features/query/query-tab';
 import { SchemaTab } from '@/features/schema/schema-tab';
-import { openSavedQuery } from '@/features/query/store';
+import { openSavedQuery, relinkSavedQueries } from '@/features/query/store';
+import { claimRestore, reportWorkspaceTab } from '@/features/shell/window-state';
 import { useWorkspaceIntent } from '@/features/shell/workspace-intents';
 import { api, ApiError, errorText, queryKeys } from '@/lib/api';
 import { WorkspaceContext, type WorkspaceState, type WorkspaceTab } from './context';
@@ -90,6 +92,29 @@ function Centered({ children }: { children: ReactNode }) {
   );
 }
 
+/** SessionInfo notice: dblink is installed, and dblink_exec writes past read-only. */
+export const READ_ONLY_DBLINK = 'READ_ONLY_DBLINK';
+
+/** A quiet mark beside "Read-only" for what read-only can't cover; the server's message is the tooltip. */
+function ReadOnlyNotice({ message }: { message: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Badge
+          variant="outline"
+          tabIndex={0}
+          aria-label={`Read-only caveat: ${message}`}
+          className="text-muted-foreground h-5 cursor-default px-1.5 focus-visible:ring-[3px]"
+        >
+          <Info aria-hidden="true" />
+          dblink
+        </Badge>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-[300px] text-left leading-relaxed">{message}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 const tabs: { value: WorkspaceTab; label: string; icon: ReactNode }[] = [
   { value: 'schema', label: 'Schema', icon: <Network aria-hidden="true" /> },
   { value: 'data', label: 'Data', icon: <Table2 aria-hidden="true" /> },
@@ -102,6 +127,7 @@ function Workspace({ sid, session, visible }: { sid: string; session: SessionInf
   const [visited, setVisited] = useState<ReadonlySet<WorkspaceTab>>(() => new Set([state.activeTab]));
   const [slot, setSlot] = useState<HTMLDivElement | null>(null);
   const { connection } = session;
+  const dblinkNotice = session.notices?.find((n) => n.code === READ_ONLY_DBLINK);
 
   if (!visited.has(state.activeTab)) setVisited(new Set([...visited, state.activeTab]));
 
@@ -170,6 +196,7 @@ function Workspace({ sid, session, visible }: { sid: string; session: SessionInf
                   Read-only
                 </Badge>
               )}
+              {dblinkNotice && <ReadOnlyNotice message={dblinkNotice.message} />}
               <Badge variant="outline" className="h-5 font-mono" title={session.serverVersion}>
                 PG {session.serverVersionShort}
               </Badge>
@@ -203,7 +230,26 @@ export function useWorkspaceState(sid: string, session: SessionInfo, visible = t
   });
   const [pickedSchema, setPickedSchema] = useState<string | null>(null);
   const [selectedTable, setSelectedTable] = useState<TableRef | null>(null);
-  const [activeTab, setActiveTab] = useState<WorkspaceTab>('schema');
+  const connectionId = session.connection.id;
+  // A server put back from the last window opens on the tab that was in front, its query tabs
+  // already in the query store (claimed before the first render so no other tab mounts first).
+  const [activeTab, setActiveTab] = useState<WorkspaceTab>(
+    () => claimRestore(sid, connectionId)?.workspaceTab ?? 'schema',
+  );
+
+  useEffect(() => reportWorkspaceTab(sid, activeTab), [sid, activeTab]);
+
+  // Restored tabs that came from saved queries: compare them with the saved version as it is now.
+  useEffect(() => {
+    const restored = claimRestore(sid, connectionId);
+    if (!restored?.queryTabs.some((t) => t.savedQueryId)) return;
+    queryClient
+      .fetchQuery({ queryKey: queryKeys.savedQueries(connectionId), queryFn: () => api.savedQueries(connectionId) })
+      .then(
+        (saved) => relinkSavedQueries(sid, saved),
+        () => undefined,
+      );
+  }, [queryClient, sid, connectionId]);
   const [queryDraft, setQueryDraft] = useState<{ sql: string; nonce: number } | null>(null);
   const nonce = useRef(0);
 

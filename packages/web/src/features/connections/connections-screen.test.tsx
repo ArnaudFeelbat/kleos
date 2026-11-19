@@ -37,7 +37,7 @@ const bridge = {
   getAppearance: vi.fn(async () => 'system' as const),
   setAppearance: vi.fn(),
   saveFileDialog: vi.fn(async () => null),
-  openFileDialog: vi.fn(async () => null),
+  openFileDialog: vi.fn<KleosBridge['openFileDialog']>(async () => null),
   revealInFinder: vi.fn(),
   onCommand: vi.fn(() => () => {}),
 } satisfies KleosBridge;
@@ -218,5 +218,184 @@ describe('ConnectionsScreen', { timeout: 15_000 }, () => {
       }),
     );
     expect(mocked.openSession).toHaveBeenCalledWith({ connectionId: 'new-1', password: 'pw' });
+  });
+});
+
+describe('ConnectionsScreen — SSH and TLS', { timeout: 15_000 }, () => {
+  const fingerprint = 'SHA256:nThbg6kXUpJWGl7E1IGOCspRomTxdCARLviKw6E5SY8';
+  const tunneled: SavedConnection = {
+    ...savedConnection,
+    hasPassword: false,
+    ssh: { host: 'bastion.example.com', port: 22, user: 'deploy', auth: 'key', keyPath: '/Users/me/.ssh/id_ed25519' },
+    hasSshPassphrase: false,
+  };
+  const sshError = (code: string, message: string, detail?: string) =>
+    new ApiError(code === kleosErrorCodes.sshPassphraseRequired ? 401 : 409, { code, message, detail });
+
+  it('asks to trust an unknown SSH host, then chains to the password prompt', async () => {
+    const user = userEvent.setup();
+    mocked.openSession
+      .mockRejectedValueOnce(sshError(kleosErrorCodes.sshHostUnknown, 'first connection', fingerprint))
+      .mockRejectedValueOnce(new ApiError(401, { code: kleosErrorCodes.passwordRequired, message: 'needs a password' }))
+      .mockResolvedValueOnce({ ...sessionInfo, sid: 'sid-ssh', connection: tunneled });
+    renderScreen([tunneled]);
+
+    await user.click(await screen.findByRole('button', { name: /^Connect/ }));
+    const trust = await screen.findByRole('dialog', { name: 'Trust this server?' });
+    expect(trust).toHaveTextContent('bastion.example.com:22');
+    expect(within(trust).getByLabelText('Host key fingerprint (SHA256)')).toHaveTextContent(fingerprint);
+
+    await user.click(within(trust).getByRole('button', { name: 'Trust and connect' }));
+    expect(mocked.openSession).toHaveBeenLastCalledWith({
+      connectionId: 'c1',
+      password: null,
+      trustSshFingerprint: fingerprint,
+    });
+    const password = await screen.findByRole('dialog', { name: 'Password for shop_dev' });
+    await user.type(within(password).getByLabelText('Password'), 'hunter2{Enter}');
+
+    await waitFor(() => expect(openTabs()).toEqual([expect.objectContaining({ sid: 'sid-ssh' })]));
+    expect(mocked.openSession).toHaveBeenLastCalledWith({
+      connectionId: 'c1',
+      password: 'hunter2',
+      trustSshFingerprint: fingerprint,
+    });
+  });
+
+  it('refuses a changed SSH host key and offers no way around it', async () => {
+    const user = userEvent.setup();
+    mocked.openSession.mockRejectedValueOnce(sshError(kleosErrorCodes.sshHostChanged, 'key changed', fingerprint));
+    renderScreen([tunneled]);
+
+    await user.click(await screen.findByRole('button', { name: /^Connect/ }));
+    const alert = await screen.findByRole('alertdialog', { name: 'The SSH host key has changed' });
+    expect(alert).toHaveTextContent('Kleos won’t connect.');
+    expect(within(alert).getByLabelText('New fingerprint (SHA256)')).toHaveTextContent(fingerprint);
+    expect(
+      within(alert)
+        .getAllByRole('button')
+        .map((b) => b.textContent),
+    ).toEqual(['Close']);
+    await user.click(within(alert).getByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    expect(mocked.openSession).toHaveBeenCalledTimes(1);
+    expect(openTabs()).toEqual([]);
+  });
+
+  it('asks for the key passphrase, keeps a wrong one in the dialog, and remembers it when asked', async () => {
+    const user = userEvent.setup();
+    const withPassword = { ...tunneled, hasPassword: true };
+    mocked.openSession
+      .mockRejectedValueOnce(sshError(kleosErrorCodes.sshPassphraseRequired, 'protected by a passphrase'))
+      .mockRejectedValueOnce(
+        new ApiError(400, { code: kleosErrorCodes.ssh, message: 'The passphrase for the SSH key is wrong' }),
+      )
+      .mockResolvedValueOnce({ ...sessionInfo, sid: 'sid-key', connection: withPassword });
+    mocked.updateConnection.mockResolvedValue({ ...withPassword, hasSshPassphrase: true });
+    renderScreen([withPassword]);
+
+    await user.click(await screen.findByRole('button', { name: /^Connect/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'SSH key passphrase for shop_dev' });
+    expect(dialog).toHaveTextContent('/Users/me/.ssh/id_ed25519');
+    await user.type(within(dialog).getByLabelText('Passphrase'), 'wrong{Enter}');
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('The passphrase for the SSH key is wrong');
+
+    await user.clear(within(dialog).getByLabelText('Passphrase'));
+    await user.type(within(dialog).getByLabelText('Passphrase'), 'open sesame');
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Remember in Keychain' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Connect' }));
+
+    await waitFor(() => expect(openTabs()).toEqual([expect.objectContaining({ sid: 'sid-key' })]));
+    expect(mocked.openSession).toHaveBeenLastCalledWith({
+      connectionId: 'c1',
+      password: null,
+      sshPassphrase: 'open sesame',
+    });
+    // Only the passphrase is stored; the saved password stays as it is.
+    await waitFor(() =>
+      expect(mocked.updateConnection).toHaveBeenCalledWith(
+        'c1',
+        expect.objectContaining({
+          password: null,
+          savePassword: true,
+          sshPassphrase: 'open sesame',
+          saveSshPassphrase: true,
+          ssh: tunneled.ssh,
+        }),
+      ),
+    );
+  });
+
+  it('sets up a tunnel with a key file, trusts the host during Test and reports the route', async () => {
+    const user = userEvent.setup();
+    bridge.openFileDialog.mockResolvedValueOnce('/Users/me/.ssh/id_ed25519');
+    mocked.testConnection
+      .mockRejectedValueOnce(sshError(kleosErrorCodes.sshHostUnknown, 'first connection', fingerprint))
+      .mockResolvedValueOnce({ version: 'PostgreSQL 16.4', elapsedMs: 52, tls: true });
+    renderScreen([]);
+
+    await user.type(await screen.findByLabelText('User'), 'kleos');
+    await user.click(screen.getByRole('switch', { name: 'Connect through SSH' }));
+    await user.click(screen.getByRole('button', { name: 'Test connection' }));
+    expect(screen.getByText('SSH host is required.')).toBeInTheDocument();
+    expect(mocked.testConnection).not.toHaveBeenCalled();
+
+    await user.type(screen.getByLabelText('SSH host'), 'bastion.example.com');
+    await user.type(screen.getByLabelText('SSH user'), 'deploy');
+    await user.click(screen.getByRole('radio', { name: 'Key file' }));
+    await user.click(screen.getByRole('button', { name: 'Choose…' }));
+    expect(bridge.openFileDialog).toHaveBeenCalledWith('key');
+    await waitFor(() => expect(screen.getByLabelText('Private key')).toHaveValue('/Users/me/.ssh/id_ed25519'));
+
+    await user.click(screen.getByRole('button', { name: 'Test connection' }));
+    const trust = await screen.findByRole('dialog', { name: 'Trust this server?' });
+    await user.click(within(trust).getByRole('button', { name: 'Trust and connect' }));
+
+    const status = await screen.findByRole('status');
+    expect(status).toHaveTextContent('Connection works · 52 ms');
+    expect(status).toHaveTextContent('Connected through SSH deploy@bastion.example.com:22, over TLS.');
+    expect(mocked.testConnection).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        ssh: {
+          host: 'bastion.example.com',
+          port: 22,
+          user: 'deploy',
+          auth: 'key',
+          keyPath: '/Users/me/.ssh/id_ed25519',
+        },
+        trustSshFingerprint: fingerprint,
+      }),
+    );
+  });
+
+  it('offers a CA certificate only when the SSL mode requires TLS, and saves it', async () => {
+    const user = userEvent.setup();
+    const verified = { ...savedConnection, sslMode: 'verify-full' as const };
+    bridge.openFileDialog.mockResolvedValueOnce('/Users/me/certs/internal-ca.pem');
+    mocked.updateConnection.mockResolvedValue({ ...verified, sslRootCertPath: '/Users/me/certs/internal-ca.pem' });
+    renderScreen([verified]);
+
+    const ca = await screen.findByLabelText('CA certificate');
+    expect(ca).toHaveAttribute('placeholder', 'System certificates');
+    await user.click(screen.getByRole('button', { name: 'Choose…' }));
+    expect(bridge.openFileDialog).toHaveBeenCalledWith('cert');
+    await waitFor(() => expect(ca).toHaveValue('/Users/me/certs/internal-ca.pem'));
+
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(mocked.updateConnection).toHaveBeenCalledWith(
+        'c1',
+        expect.objectContaining({ sslMode: 'verify-full', sslRootCertPath: '/Users/me/certs/internal-ca.pem' }),
+      ),
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Clear CA certificate' }));
+    expect(ca).toHaveValue('');
+  });
+
+  it('has no CA certificate field when SSL is only preferred', async () => {
+    renderScreen([savedConnection]);
+    await screen.findByLabelText('Host');
+    expect(screen.queryByLabelText('CA certificate')).not.toBeInTheDocument();
   });
 });

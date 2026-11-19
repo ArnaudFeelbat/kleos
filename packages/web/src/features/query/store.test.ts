@@ -11,7 +11,11 @@ import {
   isDirty,
   loadMore,
   openDraft,
+  peekQueryWorkspace,
+  persistedQueryTabs,
+  relinkSavedQueries,
   resetQueryWorkspaces,
+  restoreQueryTabs,
   runQuery,
   updateTab,
 } from './store';
@@ -82,6 +86,58 @@ describe('query tabs', () => {
     ws = getQueryWorkspace(sid);
     expect(ws.tabs.map((t) => t.sql)).toEqual(['select 42', 'select 43']);
     expect(ws.activeId).toBe(ws.tabs[1]!.id);
+  });
+});
+
+describe('restoring query tabs', () => {
+  const chart = { type: 'line' as const, x: 'day', y: ['n'] };
+
+  it('round-trips titles, SQL, charts, saved links and the active tab — and nothing else', () => {
+    const restoredSid = 'restored';
+    expect(peekQueryWorkspace(restoredSid)).toBeUndefined();
+    restoreQueryTabs(
+      restoredSid,
+      [
+        { title: 'Query 2', sql: 'select 2', chart: null, savedQueryId: null },
+        { title: 'Daily', sql: 'select day, n from t', chart, savedQueryId: 'q1' },
+      ],
+      1,
+    );
+    const ws = getQueryWorkspace(restoredSid);
+    expect(ws.tabs.map((t) => [t.title, t.view, t.run, t.saved?.id ?? null])).toEqual([
+      ['Query 2', 'results', null, null],
+      ['Daily', 'chart', null, 'q1'],
+    ]);
+    expect(ws.activeId).toBe(ws.tabs[1]!.id);
+    // The next new tab doesn't reuse a restored number.
+    addTab(restoredSid);
+    expect(getQueryWorkspace(restoredSid).tabs.at(-1)!.title).toBe('Query 3');
+
+    const back = persistedQueryTabs(getQueryWorkspace(restoredSid));
+    expect(back.tabs.slice(0, 2)).toEqual([
+      { title: 'Query 2', sql: 'select 2', chart: null, savedQueryId: null },
+      { title: 'Daily', sql: 'select day, n from t', chart, savedQueryId: 'q1' },
+    ]);
+    expect(back.active).toBe(2);
+  });
+
+  it('clamps a stale active index and ignores an empty list', () => {
+    restoreQueryTabs(sid, [], 0);
+    expect(getQueryWorkspace(sid).tabs.map((t) => t.title)).toEqual(['Query 1']);
+    restoreQueryTabs(sid, [{ title: 'Only', sql: '', chart: null, savedQueryId: null }], 5);
+    expect(getQueryWorkspace(sid).activeId).toBe(getQueryWorkspace(sid).tabs[0]!.id);
+  });
+
+  it('relinks tabs to their saved queries as they are now', () => {
+    restoreQueryTabs(sid, [{ title: 'Daily', sql: 'select 2', chart: null, savedQueryId: 'q1' }], 0);
+    relinkSavedQueries(sid, [
+      { id: 'q1', connectionId: 'c1', name: 'Daily', sql: 'select 1', chart: null, createdAt: '', updatedAt: '' },
+    ]);
+    const tab = getQueryWorkspace(sid).tabs[0]!;
+    expect(tab.saved?.sql).toBe('select 1');
+    expect(isDirty(tab)).toBe(true);
+    relinkSavedQueries(sid, []);
+    expect(getQueryWorkspace(sid).tabs[0]!.saved).toBeNull();
   });
 });
 

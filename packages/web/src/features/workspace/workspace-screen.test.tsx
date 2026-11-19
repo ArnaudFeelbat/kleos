@@ -1,9 +1,12 @@
 import { kleosErrorCodes } from '@kleos/shared';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { getQueryWorkspace, isDirty, resetQueryWorkspaces } from '@/features/query/store';
 import { shopModel } from '@/features/schema/test-fixtures';
+import { tabsStore } from '@/features/shell/tabs-store';
+import { placeRestoredTabs, resetWindowState, snapshotWindowState } from '@/features/shell/window-state';
 import type * as ApiModule from '@/lib/api';
 import { api, ApiError } from '@/lib/api';
 import { useWorkspace } from './context';
@@ -12,7 +15,7 @@ import { WorkspaceScreen } from './workspace-screen';
 
 vi.mock('@/lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof ApiModule>();
-  return { ...actual, api: { getSession: vi.fn(), schema: vi.fn() } };
+  return { ...actual, api: { getSession: vi.fn(), schema: vi.fn(), savedQueries: vi.fn() } };
 });
 
 // The tabs are other modules; stand-ins keep this test about the shell.
@@ -118,5 +121,97 @@ describe('WorkspaceScreen', { timeout: 15_000 }, () => {
     await user.click(screen.getByRole('button', { name: 'schema stand-in' }));
     await waitFor(() => expect(screen.getByRole('tab', { name: 'Query' })).toHaveAttribute('aria-selected', 'true'));
     expect(screen.getByText('draft: select 1;')).toBeInTheDocument();
+  });
+
+  it('marks a read-only session where dblink can still write, with the server’s message', async () => {
+    const user = userEvent.setup();
+    const message = 'dblink is installed: dblink_exec writes through its own connection, which read-only can’t cover.';
+    mocked.getSession.mockResolvedValue({
+      ...sessionInfo,
+      connection: { ...savedConnection, readOnly: true },
+      notices: [{ code: 'READ_ONLY_DBLINK', message }],
+    });
+    renderWorkspace();
+    const notice = await screen.findByLabelText(`Read-only caveat: ${message}`);
+    await user.hover(notice);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(message);
+  });
+
+  it('shows no dblink mark without the notice', async () => {
+    mocked.getSession.mockResolvedValue({ ...sessionInfo, connection: { ...savedConnection, readOnly: true } });
+    renderWorkspace();
+    await screen.findByText('Read-only');
+    expect(screen.queryByLabelText(/Read-only caveat/)).not.toBeInTheDocument();
+  });
+});
+
+describe('WorkspaceScreen — a server restored from the last window', { timeout: 15_000 }, () => {
+  afterEach(() => {
+    act(() => {
+      tabsStore.reset();
+      resetWindowState();
+      resetQueryWorkspaces();
+    });
+  });
+
+  it('opens on the tab that was in front, with its query tabs and the active one back', async () => {
+    placeRestoredTabs(
+      {
+        activeConnectionId: 'c1',
+        servers: [
+          {
+            connectionId: 'c1',
+            queryTabs: [
+              { title: 'Query 1', sql: 'select 1', chart: null, savedQueryId: null },
+              { title: 'Orders', sql: 'select * from orders where total > 10', chart: null, savedQueryId: 'q9' },
+              { title: 'Gone', sql: 'select 3', chart: null, savedQueryId: 'q-deleted' },
+            ],
+            activeQueryTab: 1,
+            workspaceTab: 'query',
+          },
+        ],
+      },
+      [savedConnection],
+    );
+    mocked.savedQueries.mockResolvedValue([
+      {
+        id: 'q9',
+        connectionId: 'c1',
+        name: 'Orders',
+        sql: 'select * from orders',
+        chart: null,
+        createdAt: '2026-11-18T10:00:00Z',
+        updatedAt: '2026-11-18T10:00:00Z',
+      },
+    ]);
+    mocked.getSession.mockResolvedValue(sessionInfo);
+    renderWorkspace();
+
+    expect(await screen.findByRole('tab', { name: 'Query' })).toHaveAttribute('aria-selected', 'true');
+    // The Schema tab was never in front, so it never mounted.
+    expect(screen.queryByRole('button', { name: 'schema stand-in' })).not.toBeInTheDocument();
+
+    const ws = getQueryWorkspace('s1');
+    expect(ws.tabs.map((t) => t.title)).toEqual(['Query 1', 'Orders', 'Gone']);
+    expect(ws.activeId).toBe(ws.tabs[1]!.id);
+    expect(ws.counter).toBe(4);
+    // Linked to the saved query as it is now: last session's edit shows as unsaved; a deleted one unlinks.
+    await waitFor(() => expect(getQueryWorkspace('s1').tabs[1]!.saved?.sql).toBe('select * from orders'));
+    expect(isDirty(getQueryWorkspace('s1').tabs[1]!)).toBe(true);
+    expect(getQueryWorkspace('s1').tabs[2]!.saved).toBeNull();
+    expect(mocked.savedQueries).toHaveBeenCalledWith('c1');
+
+    // Once connected under its new sid, the window state keeps the same tabs.
+    act(() => tabsStore.open(sessionInfo, { focus: false }));
+    expect(snapshotWindowState().servers[0]).toMatchObject({
+      connectionId: 'c1',
+      activeQueryTab: 1,
+      workspaceTab: 'query',
+      queryTabs: [
+        { title: 'Query 1', savedQueryId: null },
+        { title: 'Orders', savedQueryId: 'q9' },
+        { title: 'Gone', savedQueryId: null },
+      ],
+    });
   });
 });

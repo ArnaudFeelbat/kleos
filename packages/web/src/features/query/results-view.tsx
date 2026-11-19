@@ -1,5 +1,5 @@
 import { CircleCheck, CircleExclamationPoint, CircleSlash, CircleX, LoaderCircle, Lock, Play } from 'lucide-react';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useContext, useMemo, useState } from 'react';
 import { emptyGridLayout, type ApiErrorBody, type GridLayout } from '@kleos/shared';
 import { Button } from '@/components/ui/button';
 import { classifyType, typeLabel } from '@/features/cells/classify';
@@ -11,6 +11,8 @@ import { displayOrder, isEmptyLayout, moveInLayout, resizeInLayout } from '@/fea
 import { DataGrid } from '@/features/grid/data-grid';
 import type { GridColumn, GridSelection } from '@/features/grid/types';
 import { ValueInspector } from '@/features/grid/value-inspector';
+import { ExportMenu } from '@/features/jobs/export-menu';
+import { WorkspaceContext } from '@/features/workspace/context';
 import { formatInt, formatMs } from '@/lib/format';
 import type { RunState } from './store';
 
@@ -131,16 +133,16 @@ export function ResultsView({ run, errorLocation, onLoadMore }: ResultsViewProps
           onResetColumns={() => setLayout(emptyGridLayout)}
           columnsCustomized={!isEmptyLayout(layout)}
         />
-        {(run.hasMore || run.pageError) && (
-          <div className="bg-sidebar/60 flex items-center gap-3 border-t px-3 py-1.5 text-xs">
-            {run.pageError ? (
-              <span className="text-destructive inline-flex items-center gap-1.5">
-                <CircleX className="size-3.5" aria-hidden="true" />
-                Couldn’t load more rows: {run.pageError}
-              </span>
-            ) : (
-              <span className="text-muted-foreground">More rows are available; they load as you scroll.</span>
-            )}
+        <div className="bg-sidebar/60 flex min-h-10 items-center gap-3 border-t px-3 py-1.5 text-xs">
+          {run.pageError ? (
+            <span className="text-destructive inline-flex items-center gap-1.5">
+              <CircleX className="size-3.5" aria-hidden="true" />
+              Couldn’t load more rows: {run.pageError}
+            </span>
+          ) : run.hasMore ? (
+            <span className="text-muted-foreground">More rows are available; they load as you scroll.</span>
+          ) : null}
+          {(run.hasMore || run.pageError) && (
             <Button
               type="button"
               variant="outline"
@@ -152,8 +154,10 @@ export function ResultsView({ run, errorLocation, onLoadMore }: ResultsViewProps
               {run.loadingMore && <LoaderCircle className="animate-spin" aria-hidden="true" />}
               Load more
             </Button>
-          </div>
-        )}
+          )}
+          <span className="flex-1" />
+          <ResultsExportMenu sql={run.target.sql} />
+        </div>
       </div>
       {inspect && focus && focusCol && focus.row < run.rows.length && (
         <ValueInspector
@@ -166,6 +170,27 @@ export function ResultsView({ run, errorLocation, onLoadMore }: ResultsViewProps
         />
       )}
     </div>
+  );
+}
+
+/**
+ * Export of a result: the statement that produced it runs again on its own cursor (inside a
+ * read-only transaction on read-only connections), so every row is written, not only the
+ * loaded ones. Needs the workspace (for the session); renders nothing outside one.
+ */
+export function ResultsExportMenu({ sql }: { sql: string }) {
+  const ws = useContext(WorkspaceContext);
+  if (!ws) return null;
+  return (
+    <ExportMenu
+      sid={ws.sid}
+      source={{ kind: 'query', sql }}
+      defaultName="query-results"
+      subject="query results"
+      sourceKey={`${ws.sid}:export:query:${sql}`}
+      scopeNote="Runs the statement again and exports every row it returns, not just the loaded ones."
+      className="h-7"
+    />
   );
 }
 

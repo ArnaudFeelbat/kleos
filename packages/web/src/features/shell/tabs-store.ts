@@ -1,13 +1,22 @@
 import { useSyncExternalStore } from 'react';
-import type { ConnectionColor, SessionInfo } from '@kleos/shared';
+import type { ConnectionColor, SavedConnection, SessionInfo } from '@kleos/shared';
+
+/**
+ * A restored server that has no session yet: reconnecting quietly in the background, or
+ * waiting for the user (a password not in the Keychain, an SSH host to trust, a failure).
+ */
+export type RestoreStatus = { state: 'connecting' } | { state: 'reconnect'; reason: string };
 
 /** One open connection: a window tab backed by one database session. */
 export type ConnectionTab = {
+  /** Session id; `restore:<connectionId>` while a restored tab has no session yet. */
   sid: string;
   connectionId: string;
   nickname: string;
   color: ConnectionColor;
   readOnly: boolean;
+  /** Set only on a restored tab without a session (see RestoreStatus). */
+  restore?: RestoreStatus;
 };
 
 export const HOME = 'home';
@@ -24,6 +33,15 @@ function set(next: State) {
   for (const listener of listeners) listener();
 }
 
+/** Tab id of a restored server until its session opens. */
+export function restoreTabId(connectionId: string): string {
+  return `restore:${connectionId}`;
+}
+
+function tabOf(c: Pick<SavedConnection, 'id' | 'nickname' | 'color' | 'readOnly'>, sid: string): ConnectionTab {
+  return { sid, connectionId: c.id, nickname: c.nickname, color: c.color, readOnly: c.readOnly };
+}
+
 /**
  * The window's tabs: the Connections home plus one tab per connected server. Opening a
  * favorite that already has a tab focuses it instead (one tab per server).
@@ -36,26 +54,54 @@ export const tabsStore = {
     return () => listeners.delete(listener);
   },
 
-  /** The open tab for a favorite, if any. */
+  /** The open tab for a favorite, if any (a restored tab without a session included). */
   findByConnection(connectionId: string): ConnectionTab | undefined {
     return state.tabs.find((t) => t.connectionId === connectionId);
   },
 
-  /** Adds a tab for a freshly opened session (or focuses the one already open for it) and brings it to front. */
-  open(session: SessionInfo): void {
+  /**
+   * Adds a tab for a freshly opened session (or focuses the one already open for it). A
+   * restored tab of the same favorite is replaced in place, keeping its position. With
+   * `focus: false` (quiet restore) the tab in front stays in front, unless it was that very
+   * restored tab, which then simply gains its session.
+   */
+  open(session: SessionInfo, { focus = true }: { focus?: boolean } = {}): void {
     const existing = state.tabs.find((t) => t.sid === session.sid);
     if (existing) {
-      set({ ...state, active: existing.sid });
+      if (focus) set({ ...state, active: existing.sid });
       return;
     }
-    const tab: ConnectionTab = {
-      sid: session.sid,
-      connectionId: session.connection.id,
-      nickname: session.connection.nickname,
-      color: session.connection.color,
-      readOnly: session.connection.readOnly,
-    };
-    set({ tabs: [...state.tabs, tab], active: tab.sid });
+    const tab = tabOf(session.connection, session.sid);
+    const placeholder = state.tabs.findIndex((t) => t.restore && t.connectionId === session.connection.id);
+    if (placeholder !== -1) {
+      const old = state.tabs[placeholder]!;
+      const tabs = state.tabs.map((t, i) => (i === placeholder ? tab : t));
+      set({ tabs, active: focus || state.active === old.sid ? tab.sid : state.active });
+      return;
+    }
+    set({ tabs: [...state.tabs, tab], active: focus ? tab.sid : state.active });
+  },
+
+  /**
+   * Puts back the tabs of the last window, in order, before any of them is connected; each
+   * starts "connecting". `activeConnectionId` comes to front (Connections when null or gone).
+   */
+  restore(connections: SavedConnection[], activeConnectionId: string | null): void {
+    const known = new Set(state.tabs.map((t) => t.connectionId));
+    const added = connections
+      .filter((c) => !known.has(c.id))
+      .map((c): ConnectionTab => ({ ...tabOf(c, restoreTabId(c.id)), restore: { state: 'connecting' } }));
+    const tabs = [...state.tabs, ...added];
+    const front = tabs.find((t) => t.connectionId === activeConnectionId);
+    set({ tabs, active: front ? front.sid : state.active });
+  },
+
+  /** A restored tab could not reconnect by itself: it now waits for the user. */
+  needsReconnect(connectionId: string, reason: string): void {
+    const tabs = state.tabs.map((t) =>
+      t.restore && t.connectionId === connectionId ? { ...t, restore: { state: 'reconnect' as const, reason } } : t,
+    );
+    set({ ...state, tabs });
   },
 
   activate(id: ActiveTab): void {
@@ -78,8 +124,9 @@ export const tabsStore = {
   },
 
   /**
-   * Removes a tab and returns its sid so the caller can close the session. The tab to its
-   * right comes to front, else the one to its left, else Connections.
+   * Removes a tab and returns its sid so the caller can close the session (a restored tab
+   * still without one has none to close). The tab to its right comes to front, else the one
+   * to its left, else Connections.
    */
   close(sid: string): string | null {
     const index = state.tabs.findIndex((t) => t.sid === sid);
