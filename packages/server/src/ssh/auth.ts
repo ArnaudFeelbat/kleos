@@ -1,7 +1,11 @@
 import { type SshConfig, kleosErrorCodes } from '@kleos/shared';
-import { utils } from 'ssh2';
+// ssh2 is CommonJS and stays external to the Electron main bundle: Node's ESM loader only
+// exposes its default export there, so destructure instead of importing names.
+import ssh2 from 'ssh2';
 import { KleosError } from '../errors';
 import { readUserFile } from '../user-files';
+
+const { utils } = ssh2;
 
 /** The part of ssh2's ConnectConfig that authenticates. */
 export type SshCredentials = { agent: string } | { privateKey: Buffer; passphrase?: string };
