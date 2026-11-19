@@ -43,7 +43,7 @@ async function throughTunnel<T>(
   try {
     return await open(endpointOf(tunnel), tunnel);
   } catch (err) {
-    const explained = tunnel ? tunnel.explain(err) : err;
+    const explained = tunnel ? await tunnel.explain(err) : err;
     await tunnel?.close();
     throw explained;
   }
