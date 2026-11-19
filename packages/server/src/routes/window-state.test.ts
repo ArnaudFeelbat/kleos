@@ -55,4 +55,15 @@ describe('window state routes', () => {
     expect(res.body).toMatchObject({ code: 'KLEOS_VALIDATION' });
     expect((await call('GET', '/window-state')).body).toEqual({ servers: [], activeConnectionId: null });
   });
+
+  it('forgets a trusted SSH host key so the next connection asks again', async () => {
+    const { call, store } = setup();
+    store.trustKnownHost('bastion.example.com', 22, 'SHA256:old');
+    store.trustKnownHost('bastion.example.com', 2222, 'SHA256:other');
+    const res = await call('DELETE', '/ssh-known-hosts/bastion.example.com/22');
+    expect(res.status).toBe(204);
+    expect(store.getKnownHost('bastion.example.com', 22)).toBeNull();
+    expect(store.getKnownHost('bastion.example.com', 2222)).toBe('SHA256:other');
+    expect((await call('DELETE', '/ssh-known-hosts/bastion.example.com/0')).status).toBe(400);
+  });
 });

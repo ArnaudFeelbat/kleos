@@ -33,6 +33,8 @@ export interface AppStore {
   getKnownHost(host: string, port: number): string | null;
   /** Records the fingerprint for host:port, replacing any previous one. */
   trustKnownHost(host: string, port: number, fingerprint: string): void;
+  /** Forgets the trusted key for host:port (like ssh-keygen -R); no-op when none. */
+  forgetKnownHost(host: string, port: number): void;
 
   /**
    * The window to restore (emptyWindowState when none is saved or the saved JSON is no longer

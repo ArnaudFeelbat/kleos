@@ -22,6 +22,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
       deleteConnection: vi.fn(),
       testConnection: vi.fn(),
       openSession: vi.fn(),
+      forgetSshHost: vi.fn(),
     },
   };
 });
@@ -262,7 +263,7 @@ describe('ConnectionsScreen — SSH and TLS', { timeout: 15_000 }, () => {
     });
   });
 
-  it('refuses a changed SSH host key and offers no way around it', async () => {
+  it('refuses a changed SSH host key unless the user deliberately replaces it', async () => {
     const user = userEvent.setup();
     mocked.openSession.mockRejectedValueOnce(sshError(kleosErrorCodes.sshHostChanged, 'key changed', fingerprint));
     renderScreen([tunneled]);
@@ -275,11 +276,34 @@ describe('ConnectionsScreen — SSH and TLS', { timeout: 15_000 }, () => {
       within(alert)
         .getAllByRole('button')
         .map((b) => b.textContent),
-    ).toEqual(['Close']);
+    ).toEqual(['Replace the trusted key…', 'Close']);
     await user.click(within(alert).getByRole('button', { name: 'Close' }));
     await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
     expect(mocked.openSession).toHaveBeenCalledTimes(1);
+    expect(mocked.forgetSshHost).not.toHaveBeenCalled();
     expect(openTabs()).toEqual([]);
+  });
+
+  it('replaces the trusted key after a second confirmation, then connects trusting the new one', async () => {
+    const user = userEvent.setup();
+    mocked.forgetSshHost.mockResolvedValue(undefined);
+    mocked.openSession
+      .mockRejectedValueOnce(sshError(kleosErrorCodes.sshHostChanged, 'key changed', fingerprint))
+      .mockResolvedValueOnce({ ...sessionInfo, sid: 'sid-new-key', connection: tunneled });
+    renderScreen([tunneled]);
+
+    await user.click(await screen.findByRole('button', { name: /^Connect/ }));
+    const alert = await screen.findByRole('alertdialog', { name: 'The SSH host key has changed' });
+    await user.click(within(alert).getByRole('button', { name: 'Replace the trusted key…' }));
+    expect(alert).toHaveTextContent('Only if you know why it changed');
+    expect(mocked.forgetSshHost).not.toHaveBeenCalled();
+    await user.click(within(alert).getByRole('button', { name: 'Trust the new key and connect' }));
+
+    await waitFor(() => expect(openTabs()).toEqual([expect.objectContaining({ sid: 'sid-new-key' })]));
+    expect(mocked.forgetSshHost).toHaveBeenCalledWith('bastion.example.com', 22);
+    expect(mocked.openSession).toHaveBeenLastCalledWith(
+      expect.objectContaining({ connectionId: tunneled.id, trustSshFingerprint: fingerprint }),
+    );
   });
 
   it('asks for the key passphrase, keeps a wrong one in the dialog, and remembers it when asked', async () => {

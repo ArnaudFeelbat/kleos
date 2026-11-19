@@ -52,15 +52,27 @@ export class ApiError extends Error {
 
 type Method = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
-async function request<T>(method: Method, path: string, schema: z.ZodType<T> | null, body?: unknown): Promise<T> {
+/** Browsers refuse keepalive requests whose body exceeds 64 KiB; stay under it. */
+const KEEPALIVE_LIMIT = 60_000;
+
+async function request<T>(
+  method: Method,
+  path: string,
+  schema: z.ZodType<T> | null,
+  body?: unknown,
+  options: { keepalive?: boolean } = {},
+): Promise<T> {
   const { apiBase, token } = getBridge();
+  const json = body !== undefined ? JSON.stringify(body) : undefined;
   const res = await fetch(`${apiBase}/api${path}`, {
     method,
     headers: {
       Authorization: `Bearer ${token}`,
-      ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+      ...(json !== undefined ? { 'Content-Type': 'application/json' } : {}),
     },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body: json,
+    // Lets a save started while the window closes finish; too large a body would be refused.
+    ...(options.keepalive && (json?.length ?? 0) < KEEPALIVE_LIMIT ? { keepalive: true } : {}),
   });
   if (!res.ok) {
     const json: unknown = await res.json().catch(() => null);
@@ -144,7 +156,9 @@ export const api = {
   job: (jobId: string) => request('GET', `/jobs/${enc(jobId)}`, JobStatus),
   cancelJob: (jobId: string) => request<void>('POST', `/jobs/${enc(jobId)}/cancel`, NoContent),
   getWindowState: () => request('GET', '/window-state', WindowState),
-  saveWindowState: (state: WindowState) => request<void>('PUT', '/window-state', NoContent, state),
+  saveWindowState: (state: WindowState) => request<void>('PUT', '/window-state', NoContent, state, { keepalive: true }),
+  forgetSshHost: (host: string, port: number) =>
+    request<void>('DELETE', `/ssh-known-hosts/${enc(host)}/${port}`, NoContent),
 };
 
 /** Query keys shared across features so invalidation stays consistent. */

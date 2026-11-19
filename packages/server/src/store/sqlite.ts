@@ -230,6 +230,10 @@ export function createSqliteStore(path: string): AppStore {
       ).run(host, port, fingerprint, now());
     },
 
+    forgetKnownHost(host, port) {
+      db.prepare('DELETE FROM ssh_known_hosts WHERE host = ? AND port = ?').run(host, port);
+    },
+
     getWindowState(): WindowState {
       const row = db.prepare('SELECT state FROM window_state WHERE id = 1').get() as { state: string } | undefined;
       const saved = row ? parseJson(row.state, WindowState) : null;

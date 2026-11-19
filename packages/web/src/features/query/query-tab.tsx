@@ -44,7 +44,7 @@ import { ChartView } from './chart-view';
 import { errorRange, lineColumn } from './error-position';
 import { ExplainView } from './explain-view';
 import { NameDialog } from './name-dialog';
-import { ResultsView } from './results-view';
+import { ResultsExportMenu, ResultsView } from './results-view';
 import { lineSpan, runTarget, type RunTarget } from './run-target';
 import { buildSqlNamespace } from './schema-completion';
 import { SidePanel } from './side-panel';
@@ -481,6 +481,9 @@ export function QueryTab() {
               <Copy className="size-3.5" aria-hidden="true" />
               Copy as CSV
             </Button>
+          )}
+          {tab.view === 'results' && runState?.status === 'done' && runState.columns.length > 0 && (
+            <ResultsExportMenu sql={runState.target.sql} />
           )}
         </div>
 

@@ -1,6 +1,7 @@
 import type { Hono } from 'hono';
 import { WindowState } from '@kleos/shared';
 import type { ServerDeps } from '../http/deps';
+import { KleosError } from '../errors';
 import { jsonBody } from './validation';
 
 /**
@@ -14,6 +15,15 @@ export function registerWindowStateRoutes(api: Hono, deps: ServerDeps): void {
 
   api.put('/window-state', async (c) => {
     store.saveWindowState(await jsonBody(c, WindowState));
+    return c.body(null, 204);
+  });
+
+  // Forgets a trusted SSH host key once the user has confirmed the server's key really
+  // changed; the next connection then asks to trust the new key (TOFU again).
+  api.delete('/ssh-known-hosts/:host/:port', (c) => {
+    const port = Number(c.req.param('port'));
+    if (!Number.isInteger(port) || port < 1 || port > 65535) throw KleosError.validation('Invalid SSH port');
+    store.forgetKnownHost(c.req.param('host'), port);
     return c.body(null, 204);
   });
 }
