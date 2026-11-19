@@ -11,11 +11,15 @@ export type MenuActions = {
   appearance: Appearance;
   setAppearance: (mode: Appearance) => void;
   toggleAppearance: () => void;
+  openSettings: () => void;
+  /** Opens Settings and starts a check there. */
+  checkForUpdates: () => void;
 };
 
 /**
- * Native macOS menu bar. Tab and palette commands are forwarded to the focused window;
- * call again after the appearance changes so the radio items show the current mode.
+ * Native macOS menu bar. Tab and palette commands are forwarded to the main window (⌘W closes
+ * Settings when it has focus); call again after the appearance changes, from the menu or from
+ * Settings, so the radio items show the current mode.
  */
 export function installMenu(actions: MenuActions): void {
   const appearanceItem = (mode: Appearance, label: string): MenuItemConstructorOptions => ({
@@ -34,6 +38,9 @@ export function installMenu(actions: MenuActions): void {
       label: app.name,
       submenu: [
         { role: 'about' },
+        { label: 'Check for Updates…', click: () => actions.checkForUpdates() },
+        { type: 'separator' },
+        { label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: () => actions.openSettings() },
         { type: 'separator' },
         { role: 'services' },
         { type: 'separator' },

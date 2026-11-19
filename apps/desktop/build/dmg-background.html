@@ -1,0 +1,168 @@
+<!doctype html>
+<!--
+  Source of the DMG window background (dmg-background.png and dmg-background@2x.png).
+  Regenerate with `node scripts/dmg-background.mjs` after editing.
+
+  The window is 660 × 440 points. Finder draws the real icons on top at the positions set in
+  electron-builder.yml (dmg.contents, centres): Kleos at (180, 146), Applications at (480, 146),
+  112 pt icons with their labels below. This page only draws what sits around them.
+  Finder windows of a DMG keep this light art in Dark Mode too, so it is designed light only.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      :root {
+        --brand: #2370d4;
+        --ink: #1d2733;
+        --ink-soft: #5d6b7e;
+        --line: rgba(20, 45, 85, 0.09);
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+      }
+      html,
+      body {
+        width: 660px;
+        height: 440px;
+        overflow: hidden;
+      }
+      body {
+        position: relative;
+        font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+        color: var(--ink);
+        -webkit-font-smoothing: antialiased;
+        background:
+          radial-gradient(420px 220px at 330px 150px, rgba(35, 112, 212, 0.07), rgba(35, 112, 212, 0) 70%),
+          linear-gradient(180deg, #ffffff 0%, #f5f7fb 100%);
+      }
+
+      /* Between the two icons. */
+      .hint {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 116px;
+        text-align: center;
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.01em;
+        color: var(--ink-soft);
+      }
+      .arrow {
+        position: absolute;
+        left: 266px;
+        top: 134px;
+      }
+
+      /* The first-open guide. */
+      .guide {
+        position: absolute;
+        left: 36px;
+        right: 36px;
+        top: 262px;
+        height: 108px;
+        padding: 16px 20px 0;
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.86);
+        border: 1px solid var(--line);
+        box-shadow:
+          0 1px 2px rgba(20, 45, 85, 0.04),
+          0 8px 24px -12px rgba(20, 45, 85, 0.12);
+      }
+      .guide h1 {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12.5px;
+        font-weight: 600;
+        letter-spacing: -0.005em;
+      }
+      .guide h1 span {
+        font-weight: 400;
+        color: var(--ink-soft);
+      }
+      .steps {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 18px;
+        margin-top: 14px;
+        list-style: none;
+        padding: 0;
+      }
+      .steps li {
+        display: flex;
+        gap: 9px;
+        font-size: 11.5px;
+        line-height: 1.42;
+        color: var(--ink-soft);
+      }
+      .steps b {
+        font-weight: 600;
+        color: var(--ink);
+      }
+      .num {
+        flex: none;
+        width: 18px;
+        height: 18px;
+        margin-top: -1px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        font-size: 10.5px;
+        font-weight: 600;
+        color: var(--brand);
+        background: rgba(35, 112, 212, 0.1);
+        font-variant-numeric: tabular-nums;
+      }
+    </style>
+  </head>
+  <body>
+    <p class="hint">Drag Kleos to Applications</p>
+
+    <svg class="arrow" width="128" height="24" viewBox="0 0 128 24" aria-hidden="true">
+      <defs>
+        <linearGradient id="shaft" gradientUnits="userSpaceOnUse" x1="4" x2="120" y1="12" y2="12">
+          <stop offset="0" stop-color="#2370d4" stop-opacity="0" />
+          <stop offset="0.45" stop-color="#2370d4" stop-opacity="0.55" />
+          <stop offset="1" stop-color="#2370d4" />
+        </linearGradient>
+      </defs>
+      <path d="M4 12 H120" stroke="url(#shaft)" stroke-width="2" stroke-linecap="round" fill="none" />
+      <path
+        d="M112 5 L121 12 L112 19"
+        stroke="#2370d4"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        fill="none"
+      />
+    </svg>
+
+    <section class="guide">
+      <h1>
+        <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true">
+          <circle cx="8" cy="8" r="7.25" fill="none" stroke="#2370d4" stroke-width="1.5" />
+          <rect x="7.25" y="6.9" width="1.5" height="4.9" rx="0.75" fill="#2370d4" />
+          <circle cx="8" cy="4.6" r="0.95" fill="#2370d4" />
+        </svg>
+        First time? <span>Kleos isn’t from the App Store, so macOS checks with you first.</span>
+      </h1>
+      <ol class="steps">
+        <li>
+          <span class="num">1</span>
+          <span>Open <b>Kleos</b>, then click <b>Done</b> on the warning.</span>
+        </li>
+        <li>
+          <span class="num">2</span>
+          <span>In <b>System Settings › Privacy &amp; Security</b>, click <b>Open Anyway</b>.</span>
+        </li>
+        <li>
+          <span class="num">3</span>
+          <span>Confirm with <b>Open</b>. You only do this once.</span>
+        </li>
+      </ol>
+    </section>
+  </body>
+</html>
