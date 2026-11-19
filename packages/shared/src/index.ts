@@ -8,6 +8,7 @@ export * from './query';
 export * from './routes';
 export * from './rows';
 export * from './schema';
+export * from './settings';
 export * from './sql';
 export * from './stats';
 export * from './window-state';

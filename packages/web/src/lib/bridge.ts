@@ -1,3 +1,5 @@
+import type { Settings, UpdateState } from '@kleos/shared';
+
 /** Window commands sent by the main process from the native menu. */
 export type ShellCommand =
   'new-tab' | 'close-tab' | 'next-tab' | 'prev-tab' | 'palette' | `select-tab-${1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9}`;
@@ -32,6 +34,25 @@ export type KleosBridge = {
   revealInFinder(path: string): void;
   /** Subscribes to menu commands; returns the unsubscribe function. */
   onCommand(listener: (command: ShellCommand) => void): () => void;
+
+  // --- 0.5: settings and updates (owned by the main process) ---
+  /** The running app's version, e.g. "0.5.0". */
+  appVersion: string;
+  /** Which page this window shows: the main window, or the Settings window (⌘,). */
+  windowKind: 'main' | 'settings';
+  getSettings(): Promise<Settings>;
+  /** Merges, validates, saves and broadcasts; resolves to the settings now in force. */
+  updateSettings(patch: Partial<Settings>): Promise<Settings>;
+  /** Every window hears every change, including its own. */
+  onSettingsChanged(listener: (settings: Settings) => void): () => void;
+  /** Opens (or focuses) the Settings window. */
+  openSettings(): void;
+  getUpdateState(): Promise<UpdateState>;
+  /** Checks GitHub Releases now, whatever Settings › updateChecks says (the user asked). */
+  checkForUpdates(): Promise<UpdateState>;
+  onUpdateState(listener: (state: UpdateState) => void): () => void;
+  /** Opens a Kleos release page or DMG download in the default browser (only github.com/ArnaudFeelbat/kleos URLs). */
+  openReleasePage(url: string): void;
 };
 
 declare global {
