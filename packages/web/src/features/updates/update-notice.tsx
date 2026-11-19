@@ -100,7 +100,8 @@ export function UpdateNotice({ open, onOpenChange }: Props) {
 function formatReleaseDate(iso: string): string | null {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return null;
-  return date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+  // The interface is English: an English date, not the Mac's locale ("19 novembre" read oddly).
+  return date.toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
 export function UpdateDialog({

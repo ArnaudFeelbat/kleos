@@ -28,6 +28,16 @@ const appDir = fileURLToPath(new URL('../apps/desktop', import.meta.url));
 const filesDir = mkdtempSync(join(tmpdir(), 'kleos-tour-files-'));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// A stand-in for GitHub's latest-release API (KLEOS_UPDATE_URL): reports Kleos 9.9.9.
+const releasePort = 9900 + Math.floor(Math.random() * 90);
+const releaseServer = spawn(
+  process.execPath,
+  [fileURLToPath(new URL('./mock-release-server.mjs', import.meta.url)), '9.9.9', String(releasePort)],
+  {
+    stdio: 'ignore',
+  },
+);
+
 let port;
 let child;
 /** Starts the built app on the tour's own profile; called again to test the restored window. */
@@ -35,7 +45,12 @@ function launch() {
   port = 9300 + Math.floor(Math.random() * 500);
   child = spawn(electron, [appDir, `--remote-debugging-port=${port}`], {
     stdio: ['ignore', 'ignore', process.env.TOUR_VERBOSE ? 'inherit' : 'ignore'],
-    env: { ...process.env, KLEOS_DATA_DIR: dataDir, KLEOS_FAKE_DIALOGS: filesDir },
+    env: {
+      ...process.env,
+      KLEOS_DATA_DIR: dataDir,
+      KLEOS_FAKE_DIALOGS: filesDir,
+      KLEOS_UPDATE_URL: `http://127.0.0.1:${releasePort}/latest`,
+    },
   });
 }
 async function quit() {
@@ -51,6 +66,19 @@ async function pages() {
   } catch {
     return [];
   }
+}
+
+/** Attaches to a page that wasn't open before (e.g. the Settings window). */
+async function attachNew(known, timeoutMs = 20000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const page = (await pages()).find(
+      (p) => p.type === 'page' && p.webSocketDebuggerUrl && !known.has(p.webSocketDebuggerUrl),
+    );
+    if (page) return connect(page.webSocketDebuggerUrl);
+    await sleep(250);
+  }
+  throw new Error('new page not found');
 }
 
 async function attach(match, timeoutMs = 20000) {
@@ -211,6 +239,30 @@ try {
   await step('window answers', () =>
     win.waitFor(`document.querySelector('[data-testid=health]')?.textContent.includes('Server ok')`, 'health'),
   );
+  const buttonText = (text) => `${visible('button')}.find((b) => b.textContent.trim() === ${JSON.stringify(text)})`;
+  await step('asks once before checking for updates, then shows a newer release', async () => {
+    await win.waitFor(`document.body.innerText.includes('Check for new versions?')`, 'consent card', 15000);
+    await sleep(500);
+    await win.shot('00a-update-consent');
+    await win.click(buttonText('Check automatically'), 'Check automatically');
+    await win.waitFor(`!!${buttonText('Update available')}`, 'update pill', 20000);
+    await sleep(400);
+    await win.shot('00b-update-pill');
+    await win.click(buttonText('Update available'), 'Update available');
+    await win.waitFor(`document.querySelector('[role=dialog]')?.textContent.includes('9.9.9')`, 'update dialog');
+    await sleep(500);
+    await win.shot('00c-update-dialog');
+    await win.click(
+      `[...document.querySelectorAll('[role=dialog] button')].find((b) => b.textContent.trim() === 'Later')`,
+      'Later',
+    );
+    await win.waitFor(
+      // A window in the background doesn't run CSS animations, so a closing Radix dialog can stay
+      // mounted with data-state="closed" until it comes forward: closed counts as closed.
+      `![...document.querySelectorAll('[role=dialog][data-state=open]')].some((d) => d.textContent.includes('9.9.9'))`,
+      'update dialog closed',
+    );
+  });
   await step('two favorites on the Connections tab', async () => {
     await createFavorite(favorite('shop (dev)', 'blue', false));
     await createFavorite(favorite('shop (read-only)', 'red', true));
@@ -268,6 +320,31 @@ try {
   });
   const toast = (text) =>
     `[...document.querySelectorAll('[data-sonner-toast]')].some((t) => t.textContent.includes(${JSON.stringify(text)}))`;
+  await step('Settings window: panes, and rows per page reaches the Data tab', async () => {
+    const known = new Set((await pages()).map((p) => p.webSocketDebuggerUrl));
+    await win.evaluate('window.kleos.openSettings()');
+    const prefs = await attachNew(known);
+    const tab = (name) =>
+      `[...document.querySelectorAll('[role=tab]')].find((t) => t.textContent.trim() === ${JSON.stringify(name)})`;
+    await prefs.waitFor(`!!${tab('General')}`, 'Settings panes');
+    await sleep(800);
+    await prefs.shot('06s1-settings-general');
+    await prefs.click(tab('Data'), 'Data pane');
+    await sleep(500);
+    await prefs.shot('06s2-settings-data');
+    await prefs.click(
+      `[...document.querySelectorAll('[aria-labelledby="page-size-label"] button')].find((b) => b.textContent.trim() === '100')`,
+      'Rows per page 100',
+    );
+    await win.waitFor(`document.body.innerText.includes('100 per page')`, 'main window follows the page size');
+    await prefs.click(tab('Updates'), 'Updates pane');
+    await prefs.waitFor(`document.body.innerText.includes('9.9.9')`, 'Updates pane shows the newer release', 10000);
+    await sleep(500);
+    await prefs.shot('06s3-settings-updates');
+    await prefs.evaluate('window.kleos.closeWindow()').catch(() => {});
+    prefs.close();
+    await sleep(400);
+  });
   await step('export the table to CSV', async () => {
     await win.click(`${visible('button')}.find((b) => b.textContent.trim().startsWith('Export'))`, 'Export…');
     await win.waitFor(`!!document.querySelector('[role=menu]')`, 'export menu');
@@ -466,6 +543,7 @@ try {
 } catch {
   console.log('TOUR FAILED');
 } finally {
+  releaseServer.kill();
   await quit();
   rmSync(dataDir, { recursive: true, force: true });
   rmSync(filesDir, { recursive: true, force: true });
