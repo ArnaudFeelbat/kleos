@@ -6,7 +6,7 @@
 //   pg json: {"host":"127.0.0.1","port":55432,"user":"kleos","password":"…","database":"shop","schema":"shop","table":"orders"}
 // Opens two servers as window tabs, walks every screen, then repeats key screens in dark mode.
 import { spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -23,13 +23,27 @@ if (process.env.TOUR_APPEARANCE) {
   writeFileSync(join(dataDir, 'preferences.json'), JSON.stringify({ appearance: process.env.TOUR_APPEARANCE }));
 }
 const appDir = fileURLToPath(new URL('../apps/desktop', import.meta.url));
-const port = 9300 + Math.floor(Math.random() * 500);
+// Native save/open sheets answer with paths in here (KLEOS_FAKE_DIALOGS): exports land in it,
+// and the import reads import.csv from it.
+const filesDir = mkdtempSync(join(tmpdir(), 'kleos-tour-files-'));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const child = spawn(electron, [appDir, `--remote-debugging-port=${port}`], {
-  stdio: ['ignore', 'ignore', process.env.TOUR_VERBOSE ? 'inherit' : 'ignore'],
-  env: { ...process.env, KLEOS_DATA_DIR: dataDir },
-});
+let port;
+let child;
+/** Starts the built app on the tour's own profile; called again to test the restored window. */
+function launch() {
+  port = 9300 + Math.floor(Math.random() * 500);
+  child = spawn(electron, [appDir, `--remote-debugging-port=${port}`], {
+    stdio: ['ignore', 'ignore', process.env.TOUR_VERBOSE ? 'inherit' : 'ignore'],
+    env: { ...process.env, KLEOS_DATA_DIR: dataDir, KLEOS_FAKE_DIALOGS: filesDir },
+  });
+}
+async function quit() {
+  child.kill('SIGTERM');
+  for (let i = 0; i < 20 && child.exitCode === null; i += 1) await sleep(250);
+  if (child.exitCode === null) child.kill('SIGKILL');
+}
+launch();
 
 async function pages() {
   try {
@@ -181,7 +195,7 @@ try {
     `[...document.querySelectorAll('nav[aria-label="Open connections"] button')].find((b) => b.textContent.trim() === ${JSON.stringify(name)})`;
   const connectWithPassword = async (nickname) => {
     await win.click(byText('nav[aria-label="Saved connections"] button', nickname), `favorite ${nickname}`, 2);
-    await win.click(`document.querySelector('#prompt-password')`, 'password field');
+    await win.click(`document.querySelector('[role="dialog"] input[type="password"]')`, 'password field');
     await win.type(pgInfo.password);
     await win.key('Enter', 'Enter', 13);
     await win.waitFor(
@@ -210,7 +224,7 @@ try {
   });
   await step('connect the first server: password prompt, then its tab', async () => {
     await win.click(byText('nav[aria-label="Saved connections"] button', 'shop (dev)'), 'favorite', 2);
-    await win.click(`document.querySelector('#prompt-password')`, 'password field');
+    await win.click(`document.querySelector('[role="dialog"] input[type="password"]')`, 'password field');
     await win.type(pgInfo.password);
     await win.shot('02-password-prompt');
     await win.key('Enter', 'Enter', 13);
@@ -252,6 +266,54 @@ try {
     await sleep(800);
     await win.shot('06-data-grid');
   });
+  const toast = (text) =>
+    `[...document.querySelectorAll('[data-sonner-toast]')].some((t) => t.textContent.includes(${JSON.stringify(text)}))`;
+  await step('export the table to CSV', async () => {
+    await win.click(`${visible('button')}.find((b) => b.textContent.trim().startsWith('Export'))`, 'Export…');
+    await win.waitFor(`!!document.querySelector('[role=menu]')`, 'export menu');
+    await sleep(300);
+    await win.shot('06a-export-menu');
+    await win.click(
+      `[...document.querySelectorAll('[role=menu] [role=menuitem]')].find((i) => i.textContent.trim().startsWith('CSV'))`,
+      'CSV',
+    );
+    await win.waitFor(toast('Exported'), 'export done toast', 20000);
+    await sleep(300);
+    await win.shot('06b-export-done');
+    const csv = readFileSync(join(filesDir, `${pgInfo.table}.csv`), 'utf8');
+    const lines = csv
+      .replace(/^\uFEFF/, '')
+      .trim()
+      .split('\n');
+    if (lines.length < 2) throw new Error(`export wrote ${lines.length} lines`);
+    console.log(`  ${pgInfo.table}.csv: ${lines.length - 1} rows, header ${lines[0]}`);
+  });
+  await step('import a CSV into the table', async () => {
+    // Assumes the seeded shop.orders (id, customer_id, status, total, note).
+    writeFileSync(
+      join(filesDir, 'import.csv'),
+      'id,customer_id,status,total,note\n101,1,paid,42.00,imported by the tour\n102,2,pending,9.90,\n103,3,shipped,18.25,"quoted, with a comma"\n',
+    );
+    await win.click(`${visible('button')}.find((b) => b.textContent.trim().startsWith('Import CSV'))`, 'Import CSV…');
+    await win.waitFor(
+      `document.querySelector('[role=dialog]')?.textContent.includes('Import 3 rows')`,
+      'import dialog',
+    );
+    await sleep(500);
+    await win.shot('06c-import-dialog');
+    await win.click(
+      `[...document.querySelectorAll('[role=dialog] button')].find((b) => b.textContent.trim().startsWith('Import 3 rows'))`,
+      'Import 3 rows',
+    );
+    await win.waitFor(toast('Imported 3 rows'), 'import done toast', 20000);
+    await win.waitFor(
+      `${visible('[role=gridcell]')}.some((c) => c.textContent.includes('imported by the tour'))`,
+      'imported row in the grid',
+      20000,
+    );
+    await sleep(400);
+    await win.shot('06d-imported');
+  });
   await step('stage an edit', async () => {
     const cell = `${visible('[role=gridcell]')}.find((c) => c.getAttribute('aria-colindex') === '6' || c.textContent.trim() === '')`;
     await win.click(`${cell} ?? ${visible('[role=gridcell]')}[5]`, 'a text cell', 2);
@@ -273,6 +335,17 @@ try {
     await win.waitFor(`document.body.innerText.match(/48 rows/)`, 'result count', 20000);
     await sleep(600);
     await win.shot('08-query-results');
+  });
+  await step('export the query results to JSON', async () => {
+    await win.click(`${visible('button')}.find((b) => b.textContent.trim().startsWith('Export'))`, 'results Export…');
+    await win.click(
+      `[...document.querySelectorAll('[role=menu] [role=menuitem]')].find((i) => i.textContent.trim().startsWith('JSON'))`,
+      'JSON',
+    );
+    await win.waitFor(toast('Exported 48 rows'), 'query export toast', 20000);
+    const rows = JSON.parse(readFileSync(join(filesDir, 'query-results.json'), 'utf8'));
+    if (rows.length !== 48 || typeof rows[0].web !== 'number') throw new Error('unexpected JSON export');
+    console.log(`  query-results.json: ${rows.length} objects, keys ${Object.keys(rows[0]).join(', ')}`);
   });
   await step('chart the results', async () => {
     await win.click(
@@ -348,13 +421,53 @@ try {
     await sleep(600);
     await win.shot('17-dark-connections');
   });
+  await step('SSH tunnel section of a new favorite', async () => {
+    await win.click(`${visible('button')}.find((b) => b.textContent.trim() === 'New')`, 'New favorite');
+    await win.click(
+      `document.getElementById([...document.querySelectorAll('label')].find((l) => l.textContent.trim() === 'Connect through SSH')?.htmlFor)`,
+      'SSH switch',
+    );
+    await win.waitFor(`document.body.innerText.includes('SSH agent')`, 'SSH fields');
+    await sleep(500);
+    await win.shot('18-dark-ssh-form');
+  });
+  await step('relaunch restores the open servers and their query tabs', async () => {
+    await sleep(1500); // past the window-state save debounce
+    win.close();
+    await quit();
+    launch();
+    const again = await attach(() => true, 30000);
+    current = again;
+    await again.waitFor(
+      `!!${tabButton('shop (dev)')} && !!${tabButton('shop (read-only)')}`,
+      'both server tabs restored',
+      30000,
+    );
+    await again.click(tabButton('shop (dev)'), 'restored tab');
+    // Passwords were never saved: the tab waits for one in its reconnect state.
+    await again.waitFor(
+      `${visible('button')}.some((b) => b.textContent.trim() === 'Connect')`,
+      'reconnect state',
+      20000,
+    );
+    await sleep(500);
+    await again.shot('19-restored-reconnect');
+    await again.click(`${visible('button')}.find((b) => b.textContent.trim() === 'Connect')`, 'Connect');
+    await again.click(`document.querySelector('[role="dialog"] input[type="password"]')`, 'password field');
+    await again.type(pgInfo.password);
+    await again.key('Enter', 'Enter', 13);
+    await again.waitFor(`!!${front}`, 'restored workspace', 20000);
+    await again.click(`${visible('[role=tab]')}.find((t) => t.textContent.trim() === 'Query')`, 'Query tab');
+    await again.waitFor(`${visible('.cm-content')}[0]?.textContent.includes('stauts')`, 'restored query SQL', 20000);
+    await sleep(600);
+    await again.shot('20-restored-query');
+  });
   console.log('TOUR OK');
 } catch {
   console.log('TOUR FAILED');
 } finally {
-  child.kill('SIGTERM');
-  for (let i = 0; i < 20 && child.exitCode === null; i += 1) await sleep(250);
-  if (child.exitCode === null) child.kill('SIGKILL');
+  await quit();
   rmSync(dataDir, { recursive: true, force: true });
+  rmSync(filesDir, { recursive: true, force: true });
 }
 process.exit(failed ? 1 : 0);
