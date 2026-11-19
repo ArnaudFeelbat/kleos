@@ -6,7 +6,7 @@ import { stopJobPolling } from '@/features/jobs/job-runner';
 import { Providers, workspaceState } from '@/features/workspace/test-workspace';
 import type * as apiModule from '@/lib/api';
 import { api } from '@/lib/api';
-import { ResultsView } from './results-view';
+import { ResultsExportMenu } from './results-view';
 import type { RunState } from './store';
 
 vi.mock('@/lib/api', async (importOriginal) => {
@@ -49,7 +49,7 @@ describe('ResultsView export', () => {
     mocked.startExport.mockResolvedValue({ state: 'done', rows: 2, path: '/x.json' } as JobStatus);
     render(
       <Providers state={workspaceState()}>
-        <ResultsView run={run} errorLocation={null} onLoadMore={() => {}} />
+        <ResultsExportMenu sql={run.target.sql} />
       </Providers>,
     );
     await user.click(screen.getByRole('button', { name: /Export/ }));

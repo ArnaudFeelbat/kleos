@@ -56,8 +56,11 @@ export class PostgresSession implements Session {
   private closing: Promise<void> | null = null;
 
   /** Export and import (0.4): each job on its own client, outside the pool; see jobs.ts. */
-  readonly exportFile: Session['exportFile'] = (req, job) => postgresJobs(this.pool).exportFile(req, job);
-  readonly importFile: Session['importFile'] = (req, job) => postgresJobs(this.pool).importFile(req, job);
+  // Through the guard, so a job cut by a dropped SSH tunnel fails with the tunnel's error.
+  readonly exportFile: Session['exportFile'] = (req, job) =>
+    this.guard(() => postgresJobs(this.pool).exportFile(req, job));
+  readonly importFile: Session['importFile'] = (req, job) =>
+    this.guard(() => postgresJobs(this.pool).importFile(req, job));
 
   constructor(init: SessionInit) {
     this.pool = init.pool;

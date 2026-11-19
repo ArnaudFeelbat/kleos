@@ -133,31 +133,31 @@ export function ResultsView({ run, errorLocation, onLoadMore }: ResultsViewProps
           onResetColumns={() => setLayout(emptyGridLayout)}
           columnsCustomized={!isEmptyLayout(layout)}
         />
-        <div className="bg-sidebar/60 flex min-h-10 items-center gap-3 border-t px-3 py-1.5 text-xs">
-          {run.pageError ? (
-            <span className="text-destructive inline-flex items-center gap-1.5">
-              <CircleX className="size-3.5" aria-hidden="true" />
-              Couldn’t load more rows: {run.pageError}
-            </span>
-          ) : run.hasMore ? (
-            <span className="text-muted-foreground">More rows are available; they load as you scroll.</span>
-          ) : null}
-          {(run.hasMore || run.pageError) && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-7 text-xs"
-              disabled={run.loadingMore}
-              onClick={onLoadMore}
-            >
-              {run.loadingMore && <LoaderCircle className="animate-spin" aria-hidden="true" />}
-              Load more
-            </Button>
-          )}
-          <span className="flex-1" />
-          <ResultsExportMenu sql={run.target.sql} />
-        </div>
+        {(run.hasMore || run.pageError) && (
+          <div className="bg-sidebar/60 flex items-center gap-3 border-t px-3 py-1.5 text-xs">
+            {run.pageError ? (
+              <span className="text-destructive inline-flex items-center gap-1.5">
+                <CircleX className="size-3.5" aria-hidden="true" />
+                Couldn’t load more rows: {run.pageError}
+              </span>
+            ) : run.hasMore ? (
+              <span className="text-muted-foreground">More rows are available; they load as you scroll.</span>
+            ) : null}
+            {(run.hasMore || run.pageError) && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                disabled={run.loadingMore}
+                onClick={onLoadMore}
+              >
+                {run.loadingMore && <LoaderCircle className="animate-spin" aria-hidden="true" />}
+                Load more
+              </Button>
+            )}
+          </div>
+        )}
       </div>
       {inspect && focus && focusCol && focus.row < run.rows.length && (
         <ValueInspector

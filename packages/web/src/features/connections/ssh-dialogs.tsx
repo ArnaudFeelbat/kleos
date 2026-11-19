@@ -1,4 +1,5 @@
 import { KeySquare, LoaderCircle, ShieldExclamationPoint, ShieldQuestionMark } from 'lucide-react';
+import { useState } from 'react';
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -32,11 +33,11 @@ function sshAddress(target: PromptTarget): string {
  * the form's Test button.
  */
 export function CredentialDialogs({ prompts }: { prompts: CredentialPrompts }) {
-  const { prompt, submitPassword, submitPassphrase, trustHost, cancel } = prompts;
+  const { prompt, submitPassword, submitPassphrase, trustHost, replaceHostKey, cancel } = prompts;
   return (
     <>
       <SshTrustDialog prompt={prompt} onTrust={() => void trustHost()} onCancel={cancel} />
-      <SshHostChangedDialog prompt={prompt} onClose={cancel} />
+      <SshHostChangedDialog prompt={prompt} onReplace={() => void replaceHostKey()} onClose={cancel} />
       <SshPassphraseDialog
         prompt={prompt}
         onSubmit={(passphrase, remember) => void submitPassphrase(passphrase, remember)}
@@ -119,37 +120,74 @@ export function SshTrustDialog({
 
 /**
  * KLEOS_SSH_HOST_CHANGED: the SSH server shows another key than the trusted one. Kleos never
- * connects then, and offers no way around it here.
+ * connects on its own; replacing the trusted key takes a deliberate second confirmation, like
+ * running `ssh-keygen -R` by hand.
  */
-export function SshHostChangedDialog({ prompt, onClose }: { prompt: CredentialPrompt | null; onClose(): void }) {
+export function SshHostChangedDialog({
+  prompt,
+  onReplace,
+  onClose,
+}: {
+  prompt: CredentialPrompt | null;
+  onReplace(): void;
+  onClose(): void;
+}) {
   const shown = prompt?.kind === 'ssh-changed' ? prompt : null;
   return (
     <AlertDialog open={shown !== null} onOpenChange={(open) => !open && onClose()}>
-      {shown && (
-        <AlertDialogContent>
-          <AlertDialogHeader className="flex flex-row items-start gap-3.5 text-left">
-            <span
-              aria-hidden="true"
-              className="bg-error-bg flex size-10 shrink-0 items-center justify-center rounded-xl shadow-[inset_0_0_0_1px_var(--edge)]"
-            >
-              <ShieldExclamationPoint className="text-destructive size-[18px]" />
-            </span>
-            <div className="flex min-w-0 flex-col gap-1.5 text-left">
-              <AlertDialogTitle className="text-base">The SSH host key has changed</AlertDialogTitle>
-              <AlertDialogDescription className="text-[12.5px] leading-relaxed">
-                <Mono>{sshAddress(shown.target)}</Mono> presented a different host key from the one Kleos trusted for{' '}
-                {shown.target.name}. The server may have been reinstalled, or someone may be intercepting the
-                connection. Kleos won’t connect.
-              </AlertDialogDescription>
-            </div>
-          </AlertDialogHeader>
-          <Fingerprint label="New fingerprint (SHA256)" value={shown.fingerprint} />
-          <AlertDialogFooter>
-            <AlertDialogCancel size="sm">Close</AlertDialogCancel>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      )}
+      {shown && <HostChangedContent key={shown.fingerprint ?? ''} shown={shown} onReplace={onReplace} />}
     </AlertDialog>
+  );
+}
+
+function HostChangedContent({ shown, onReplace }: { shown: CredentialPrompt; onReplace(): void }) {
+  const [confirming, setConfirming] = useState(false);
+  const canReplace = Boolean(shown.fingerprint && shown.target.ssh);
+  return (
+    <AlertDialogContent>
+      <AlertDialogHeader className="flex flex-row items-start gap-3.5 text-left">
+        <span
+          aria-hidden="true"
+          className="bg-error-bg flex size-10 shrink-0 items-center justify-center rounded-xl shadow-[inset_0_0_0_1px_var(--edge)]"
+        >
+          <ShieldExclamationPoint className="text-destructive size-[18px]" />
+        </span>
+        <div className="flex min-w-0 flex-col gap-1.5 text-left">
+          <AlertDialogTitle className="text-base">The SSH host key has changed</AlertDialogTitle>
+          <AlertDialogDescription className="text-[12.5px] leading-relaxed">
+            <Mono>{sshAddress(shown.target)}</Mono> presented a different host key from the one Kleos trusted for{' '}
+            {shown.target.name}. The server may have been reinstalled, or someone may be intercepting the connection.
+            Kleos won’t connect.
+          </AlertDialogDescription>
+        </div>
+      </AlertDialogHeader>
+      <Fingerprint label="New fingerprint (SHA256)" value={shown.fingerprint} />
+      {confirming && (
+        <Callout tone="warning" title="Only if you know why it changed">
+          Replace the trusted key only when the server’s administrator confirms this new fingerprint. Kleos then trusts
+          it from now on.
+        </Callout>
+      )}
+      {shown.error && (
+        <Callout role="alert" tone="error" title="Connection failed">
+          <span className="font-mono text-xs break-words">{shown.error}</span>
+        </Callout>
+      )}
+      <AlertDialogFooter>
+        {canReplace &&
+          (confirming ? (
+            <Button type="button" size="sm" variant="destructive" disabled={shown.submitting} onClick={onReplace}>
+              {shown.submitting && <LoaderCircle className="animate-spin" aria-hidden="true" />}
+              {shown.submitting ? 'Connecting…' : 'Trust the new key and connect'}
+            </Button>
+          ) : (
+            <Button type="button" size="sm" variant="ghost" onClick={() => setConfirming(true)}>
+              Replace the trusted key…
+            </Button>
+          ))}
+        <AlertDialogCancel size="sm">Close</AlertDialogCancel>
+      </AlertDialogFooter>
+    </AlertDialogContent>
   );
 }
 

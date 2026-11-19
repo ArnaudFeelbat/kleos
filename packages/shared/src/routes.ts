@@ -50,6 +50,7 @@
  *   POST   /jobs/:jobId/cancel                       -> 204                                            (0.4)
  *   GET    /window-state                             -> WindowState (empty when none saved)            (0.4)
  *   PUT    /window-state          WindowState        -> 204                                            (0.4)
+ *   DELETE /ssh-known-hosts/:host/:port              -> 204 (forget a trusted SSH host key)            (0.4)
  *   GET    /history/:connectionId?limit=200          -> HistoryEntry[] (newest first)
  *   POST   /history/:connectionId NewHistoryEntry    -> HistoryEntry
  *   GET    /saved-queries?connectionId=              -> SavedQuery[]

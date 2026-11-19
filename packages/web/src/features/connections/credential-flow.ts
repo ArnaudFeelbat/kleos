@@ -1,6 +1,6 @@
 import { kleosErrorCodes, type OpenSessionRequest, type SavedConnection, type SshConfig } from '@kleos/shared';
 import { useCallback, useRef, useState } from 'react';
-import { ApiError, errorText } from '@/lib/api';
+import { ApiError, api, errorText } from '@/lib/api';
 import { connectionSubtitle } from './form-model';
 
 /** What a prompt names: the favorite (or the unsaved form) and its SSH hop, if any. */
@@ -158,12 +158,29 @@ export function useCredentialPrompts() {
     () => (prompt?.fingerprint ? retry({ trustSshFingerprint: prompt.fingerprint }) : Promise.resolve()),
     [prompt, retry],
   );
+  /**
+   * After the user confirmed the SSH server's key really changed (reinstall, new host): forget
+   * the old key, then retry trusting the new one — what `ssh-keygen -R` + reconnect does.
+   */
+  const replaceHostKey = useCallback(async () => {
+    const ssh = prompt?.target.ssh;
+    const fingerprint = prompt?.fingerprint;
+    if (!prompt || prompt.kind !== 'ssh-changed' || !ssh || !fingerprint) return;
+    setPrompt({ ...prompt, submitting: true, error: null });
+    try {
+      await api.forgetSshHost(ssh.host, ssh.port);
+    } catch (err) {
+      setPrompt({ ...prompt, submitting: false, error: errorText(err) });
+      return;
+    }
+    await retry({ trustSshFingerprint: fingerprint });
+  }, [prompt, retry]);
   const cancel = useCallback(() => {
     flow.current = null;
     setPrompt(null);
   }, []);
 
-  return { prompt, start, submitPassword, submitPassphrase, trustHost, cancel };
+  return { prompt, start, submitPassword, submitPassphrase, trustHost, replaceHostKey, cancel };
 }
 
 export type CredentialPrompts = ReturnType<typeof useCredentialPrompts>;
