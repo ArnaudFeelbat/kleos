@@ -171,7 +171,7 @@ Kleos ships as a `.dmg` on GitHub Releases, never through the Mac App Store. The
 one theme per release — subject to change:
 
 - **0.5 · Share** — a DMG anyone can open (first-open guide, or signed and notarized with a
-  Developer ID), new-version notice, SHA-256 checksums, an Intel build, a Settings window
+  Developer ID), new-version notice, SHA-256 checksums, a Settings window
 - **0.6 · Schema** — diff two open servers, schema editing with a SQL preview, diagram export
 - **0.7 · Query** — “Run all”, query parameters, formatter and snippets, searchable history
 - **0.8 · Insight** — plans explained in plain language, monitoring alerts and trends
