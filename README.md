@@ -15,6 +15,7 @@ and watch your server live — one window, one tab per server.
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-12%2B-336791?logo=postgresql&logoColor=white)
 ![Electron](https://img.shields.io/badge/Electron-45-47848f?logo=electron&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white)
+[![License: MIT](https://img.shields.io/badge/license-MIT-2370d4)](LICENSE)
 
 <br />
 
@@ -185,3 +186,7 @@ Release notes are written in French: see [CHANGELOG.md](CHANGELOG.md).
 ## Contributing
 
 Issues and pull requests are welcome — read [CONTRIBUTING.md](CONTRIBUTING.md) first.
+
+## License
+
+[MIT](LICENSE) © 2026 Arnaud PANAPADEATCHY
