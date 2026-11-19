@@ -21,6 +21,12 @@ export type KleosBridge = {
   getAppearance(): Promise<Appearance>;
   /** Applies and remembers the appearance; the page follows through prefers-color-scheme. */
   setAppearance(mode: Appearance): void;
+  /** Native save dialog for an export; resolves to the chosen absolute path, or null when cancelled. (0.4) */
+  saveFileDialog(args: { defaultName: string; format: 'csv' | 'json' | 'xlsx' }): Promise<string | null>;
+  /** Native open dialog for a CSV/TSV import; null when cancelled. (0.4) */
+  openFileDialog(): Promise<string | null>;
+  /** Shows the file in Finder. (0.4) */
+  revealInFinder(path: string): void;
   /** Subscribes to menu commands; returns the unsubscribe function. */
   onCommand(listener: (command: ShellCommand) => void): () => void;
 };

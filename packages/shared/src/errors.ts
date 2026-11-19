@@ -29,5 +29,16 @@ export const kleosErrorCodes = {
   rowCountMismatch: 'KLEOS_ROW_COUNT_MISMATCH',
   passwordRequired: 'KLEOS_PASSWORD_REQUIRED',
   connection: 'KLEOS_CONNECTION',
+  /** The SSH host key isn't trusted yet; `detail` holds its SHA256 fingerprint. (0.4) */
+  sshHostUnknown: 'KLEOS_SSH_HOST_UNKNOWN',
+  /** The SSH host key differs from the trusted one; never connect. (0.4) */
+  sshHostChanged: 'KLEOS_SSH_HOST_CHANGED',
+  /** The SSH key is encrypted and no passphrase is available. (0.4) */
+  sshPassphraseRequired: 'KLEOS_SSH_PASSPHRASE_REQUIRED',
+  /** SSH could not connect or authenticate; the message is the library's. (0.4) */
+  ssh: 'KLEOS_SSH',
+  /** A file could not be read or written (export/import). (0.4) */
+  file: 'KLEOS_FILE',
+  jobNotFound: 'KLEOS_JOB_NOT_FOUND',
   internal: 'KLEOS_INTERNAL',
 } as const;

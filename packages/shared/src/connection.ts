@@ -9,6 +9,24 @@ export const connectionColors = ['none', 'red', 'orange', 'yellow', 'green', 'bl
 export const ConnectionColor = z.enum(connectionColors);
 export type ConnectionColor = z.infer<typeof ConnectionColor>;
 
+/** How the SSH tunnel authenticates: the macOS ssh-agent, or a private key file. */
+export const SshAuth = z.enum(['agent', 'key']);
+export type SshAuth = z.infer<typeof SshAuth>;
+
+/**
+ * An SSH tunnel (bastion) in front of the database. Kleos connects to the SSH host and
+ * forwards each Postgres connection to `host:port` of the favorite as seen from there.
+ */
+export const SshConfig = z.object({
+  host: z.string().trim().min(1),
+  port: z.number().int().min(1).max(65535),
+  user: z.string().trim().min(1),
+  auth: SshAuth,
+  /** Private key file for auth "key", e.g. ~/.ssh/id_ed25519. Its passphrase, if any, is in the Keychain. */
+  keyPath: z.string().nullable(),
+});
+export type SshConfig = z.infer<typeof SshConfig>;
+
 /** Every field of a favorite except the password, which lives in the Keychain. */
 export const ConnectionConfig = z.object({
   nickname: z.string().trim().min(1).max(120),
@@ -19,6 +37,10 @@ export const ConnectionConfig = z.object({
   sslMode: SslMode,
   color: ConnectionColor,
   readOnly: z.boolean(),
+  /** SSH tunnel, or null/absent to connect directly. (0.4) */
+  ssh: SshConfig.nullable().optional(),
+  /** PEM file of a private CA to trust for SSL (sslrootcert), or null/absent for the system CAs. (0.4) */
+  sslRootCertPath: z.string().nullable().optional(),
 });
 export type ConnectionConfig = z.infer<typeof ConnectionConfig>;
 
@@ -28,12 +50,17 @@ export const ConnectionInput = ConnectionConfig.extend({
   password: z.string().nullable(),
   /** When false, any stored Keychain entry is removed. */
   savePassword: z.boolean(),
+  /** SSH key passphrase: null keeps the stored one; same Keychain rules as the password. (0.4) */
+  sshPassphrase: z.string().nullable().optional(),
+  saveSshPassphrase: z.boolean().optional(),
 });
 export type ConnectionInput = z.infer<typeof ConnectionInput>;
 
 export const SavedConnection = ConnectionConfig.extend({
   id: z.string(),
   hasPassword: z.boolean(),
+  /** Whether the Keychain holds an SSH key passphrase for this favorite. (0.4) */
+  hasSshPassphrase: z.boolean().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -44,6 +71,9 @@ export const TestConnectionRequest = ConnectionConfig.extend({
   password: z.string().nullable(),
   /** When set and password is null, the stored Keychain password of this favorite is used. */
   connectionId: z.string().optional(),
+  sshPassphrase: z.string().nullable().optional(),
+  /** Accept and remember this SSH host key fingerprint (after KLEOS_SSH_HOST_UNKNOWN). */
+  trustSshFingerprint: z.string().optional(),
 });
 export type TestConnectionRequest = z.infer<typeof TestConnectionRequest>;
 
@@ -58,6 +88,9 @@ export const OpenSessionRequest = z.object({
   connectionId: z.string(),
   /** Used instead of the Keychain when the favorite has no saved password. */
   password: z.string().nullable().optional(),
+  sshPassphrase: z.string().nullable().optional(),
+  /** Accept and remember this SSH host key fingerprint (after KLEOS_SSH_HOST_UNKNOWN). */
+  trustSshFingerprint: z.string().optional(),
 });
 export type OpenSessionRequest = z.infer<typeof OpenSessionRequest>;
 
@@ -67,6 +100,11 @@ export const SessionInfo = z.object({
   serverVersion: z.string(),
   /** e.g. "16.4" */
   serverVersionShort: z.string(),
+  /**
+   * Things the user should know about this session, e.g. READ_ONLY_DBLINK: dblink is
+   * installed, and dblink_exec writes through its own connection, which read-only can't cover. (0.4)
+   */
+  notices: z.array(z.object({ code: z.string(), message: z.string() })).optional(),
 });
 export type SessionInfo = z.infer<typeof SessionInfo>;
 

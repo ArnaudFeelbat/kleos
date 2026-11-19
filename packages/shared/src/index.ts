@@ -3,12 +3,14 @@ import { z } from 'zod';
 export * from './connection';
 export * from './errors';
 export * from './grid';
+export * from './jobs';
 export * from './query';
 export * from './routes';
 export * from './rows';
 export * from './schema';
 export * from './sql';
 export * from './stats';
+export * from './window-state';
 
 /** GET /api/health */
 export const Health = z.object({

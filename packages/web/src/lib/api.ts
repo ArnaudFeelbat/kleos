@@ -7,6 +7,8 @@ import {
   GridLayout,
   Health,
   HistoryEntry,
+  ImportPreview,
+  JobStatus,
   LayoutPositions,
   QueryPage,
   QueryStarted,
@@ -17,10 +19,14 @@ import {
   SessionInfo,
   StatsResult,
   TestConnectionResult,
+  WindowState,
   BackendActionResult,
   type ConnectionInput,
   type CountRequest,
   type ExplainRequest,
+  type ExportRequest,
+  type ImportPreviewRequest,
+  type ImportRequest,
   type NewHistoryEntry,
   type OpenSessionRequest,
   type QueryRequest,
@@ -130,6 +136,15 @@ export const api = {
   updateSavedQuery: (id: string, input: SavedQueryInput) =>
     request('PUT', `/saved-queries/${enc(id)}`, SavedQuery, input),
   deleteSavedQuery: (id: string) => request<void>('DELETE', `/saved-queries/${enc(id)}`, NoContent),
+
+  // 0.4 — export/import jobs and the restored window.
+  startExport: (sid: string, req: ExportRequest) => request('POST', `/sessions/${enc(sid)}/exports`, JobStatus, req),
+  importPreview: (req: ImportPreviewRequest) => request('POST', '/imports/preview', ImportPreview, req),
+  startImport: (sid: string, req: ImportRequest) => request('POST', `/sessions/${enc(sid)}/imports`, JobStatus, req),
+  job: (jobId: string) => request('GET', `/jobs/${enc(jobId)}`, JobStatus),
+  cancelJob: (jobId: string) => request<void>('POST', `/jobs/${enc(jobId)}/cancel`, NoContent),
+  getWindowState: () => request('GET', '/window-state', WindowState),
+  saveWindowState: (state: WindowState) => request<void>('PUT', '/window-state', NoContent, state),
 };
 
 /** Query keys shared across features so invalidation stays consistent. */
@@ -146,6 +161,8 @@ export const queryKeys = {
     ['grid-layout', connectionId, schema, table] as const,
   history: (connectionId: string) => ['history', connectionId] as const,
   savedQueries: (connectionId: string) => ['saved-queries', connectionId] as const,
+  job: (jobId: string) => ['job', jobId] as const,
+  windowState: ['window-state'] as const,
 };
 
 /** One-line text for an error, e.g. "42703 column o.stauts does not exist". */
