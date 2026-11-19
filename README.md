@@ -80,8 +80,13 @@ and watch your server live — one window, one tab per server.
 
 1. Download the latest **`Kleos-x.y.z-arm64.dmg`** from
    [Releases](https://github.com/ArnaudFeelbat/kleos/releases) and drag Kleos to Applications.
-2. Builds are not notarized yet, so macOS asks before the first launch: right-click Kleos ›
-   **Open** › **Open**. (Or once: `xattr -dr com.apple.quarantine /Applications/Kleos.app`.)
+   Each release also lists the DMG's SHA-256 (`shasum -a 256 -c Kleos-x.y.z-arm64.dmg.sha256`).
+2. Kleos isn't from the App Store and isn't notarized, so macOS checks with you once: open
+   Kleos and click **Done** on the warning, then in **System Settings › Privacy & Security**
+   click **Open Anyway** and confirm with **Open**. The disk image shows these steps too.
+   (Or once in Terminal: `xattr -dr com.apple.quarantine /Applications/Kleos.app`.)
+3. Optional: in **Settings › Updates** (⌘,), let Kleos check GitHub once a day for a new
+   version. Until you allow it, Kleos makes no network call of its own.
 
 Requires macOS on Apple silicon and PostgreSQL 12 or later.
 
@@ -90,6 +95,7 @@ Requires macOS on Apple silicon and PostgreSQL 12 or later.
 | Shortcut      | Action                                               |
 | ------------- | ---------------------------------------------------- |
 | ⌘K            | Command palette                                      |
+| ⌘,            | Settings                                             |
 | ⌘T            | Connections (open another server)                    |
 | ⌘W            | Close the current tab                                |
 | ⌘1 … ⌘9       | Go to a server tab (⌘9 = last)                       |
@@ -103,7 +109,9 @@ Requires macOS on Apple silicon and PostgreSQL 12 or later.
 
 ## Privacy and security
 
-- Everything stays on your Mac. Kleos talks only to the databases you connect to.
+- Everything stays on your Mac. Kleos talks only to the databases you connect to — and, if
+  you allow it in Settings › Updates, to GitHub once a day to see whether a newer version is
+  out (one request; nothing about you or your databases is sent).
 - The app runs a small API server on `127.0.0.1` for its own window, protected by a random
   token generated at each launch and a Host check.
 - Passwords and SSH key passphrases live in the **macOS Keychain** (service `kleos`), never

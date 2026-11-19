@@ -326,12 +326,12 @@ function DataPane() {
 export function formatCheckedAt(iso: string, now: Date = new Date()): string | null {
   const at = new Date(iso);
   if (Number.isNaN(at.getTime())) return null;
-  const time = at.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  const time = at.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
   const day = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
   const days = Math.round((day(now) - day(at)) / 86_400_000);
   if (days === 0) return `today at ${time}`;
   if (days === 1) return `yesterday at ${time}`;
-  const date = at.toLocaleDateString(undefined, {
+  const date = at.toLocaleDateString('en-GB', {
     day: 'numeric',
     month: 'long',
     ...(at.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}),
