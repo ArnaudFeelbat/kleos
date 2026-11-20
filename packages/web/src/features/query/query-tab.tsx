@@ -54,6 +54,7 @@ import { lineSpan, runTarget, type RunTarget } from './run-target';
 import { buildSqlNamespace } from './schema-completion';
 import { ScriptList } from './script-results';
 import { SidePanel } from './side-panel';
+import { useHistorySearchRequest } from '@/features/history/search-request';
 import { SqlEditor, type ErrorMark } from './sql-editor';
 import { splitScript, type ScriptStatement } from './sql-script';
 import {
@@ -161,6 +162,9 @@ export function QueryTab() {
   const tab = qws.tabs.find((t) => t.id === qws.activeId) ?? qws.tabs[0]!;
   const viewRef = useRef<EditorView | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
+  // ⌘K › Search history… needs the side panel on screen; its History tab takes the request.
+  const historySearch = useHistorySearchRequest(sid);
+  if (historySearch !== undefined && !panelOpen) setPanelOpen(true);
   const [editorHeight, setEditorHeight] = useState(280);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [confirmClose, setConfirmClose] = useState<QueryTabState | null>(null);
