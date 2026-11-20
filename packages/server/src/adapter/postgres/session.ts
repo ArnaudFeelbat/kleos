@@ -4,6 +4,8 @@ import type {
   BackendActionResult,
   CountRequest,
   CountResult,
+  DdlPreview,
+  DdlResult,
   ExplainResult,
   QueryPage,
   QueryStarted,
@@ -15,7 +17,8 @@ import type {
   StatsResultOf,
 } from '@kleos/shared';
 import type { SshTunnel } from '../../ssh/tunnel';
-import type { QueryOptions, Session, SessionNotice } from '../types';
+import type { DdlJob, QueryOptions, Session, SessionNotice } from '../types';
+import { applyDdl, previewDdl } from './ddl';
 import { applyEdits } from './edits';
 import { introspect } from './introspect';
 import { postgresJobs } from './jobs';
@@ -108,6 +111,14 @@ export class PostgresSession implements Session {
 
   applyEdits(edits: RowEdit[]): Promise<ApplyEditsResult> {
     return this.guard(() => applyEdits(this.pool, edits, this.readOnly));
+  }
+
+  previewDdl(changes: DdlJob[]): Promise<DdlPreview> {
+    return this.guard(() => previewDdl(this.pool, changes));
+  }
+
+  applyDdl(changes: DdlJob[]): Promise<DdlResult> {
+    return this.guard(() => applyDdl(this.pool, changes, this.readOnly));
   }
 
   runQuery(sql: string, opts: QueryOptions): Promise<QueryStarted> {

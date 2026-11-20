@@ -4,6 +4,9 @@ import type {
   ConnectionConfig,
   CountRequest,
   CountResult,
+  DdlChange,
+  DdlPreview,
+  DdlResult,
   ExplainResult,
   ExportRequest,
   ImportRequest,
@@ -82,6 +85,19 @@ export interface Session {
    */
   applyEdits(edits: RowEdit[]): Promise<ApplyEditsResult>;
 
+  /**
+   * Schema editing (0.6): the statement of each change, types resolved through Postgres.
+   * Only catalog questions run; nothing changes. Invalid changes throw KLEOS_VALIDATION with
+   * statementIndex.
+   */
+  previewDdl(changes: DdlJob[]): Promise<DdlPreview>;
+  /**
+   * Runs the same statements in one transaction on one client. Refuses read-only sessions
+   * (KLEOS_READ_ONLY); a failing statement rolls everything back and throws Postgres's error
+   * with statementIndex.
+   */
+  applyDdl(changes: DdlJob[]): Promise<DdlResult>;
+
   /** Runs one statement through a server-side cursor on the tab's dedicated client; returns the first page. */
   runQuery(sql: string, opts: QueryOptions): Promise<QueryStarted>;
   nextPage(qid: string, size: number): Promise<QueryPage>;
@@ -112,6 +128,9 @@ export interface Session {
 
   close(): Promise<void>;
 }
+
+/** A schema change after zod defaults (0.6). */
+export type DdlJob = z.output<typeof DdlChange>;
 
 /** Export and import requests after zod defaults. */
 export type ExportJob = z.output<typeof ExportRequest>;

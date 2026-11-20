@@ -1,6 +1,7 @@
 import type { Hono } from 'hono';
 import type { ServerDeps } from '../http/deps';
 import { registerConnectionRoutes } from './connections';
+import { registerDdlRoutes } from './ddl';
 import { registerGridLayoutRoutes } from './grid-layouts';
 import { registerHistoryRoutes } from './history';
 import { registerJobRoutes } from './jobs';
@@ -16,6 +17,7 @@ export function registerRoutes(api: Hono, deps: ServerDeps): void {
   registerWindowStateRoutes(api, deps);
   registerConnectionRoutes(api, deps);
   registerSessionRoutes(api, deps);
+  registerDdlRoutes(api, deps);
   registerQueryRoutes(api, deps);
   registerStatsRoutes(api, deps);
   registerJobRoutes(api, deps);
