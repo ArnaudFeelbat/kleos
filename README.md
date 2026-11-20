@@ -32,8 +32,12 @@ and watch your server live — one window, one tab per server.
   queries, pending edits and diagram while you work elsewhere. ⌘1–⌘9 to jump between them.
 - **⌘K to go anywhere.** Find any table or view on every open server, a saved query, a
   favorite to connect, or an action — by typing a few letters.
-- **Schema as a diagram.** Tables, columns and foreign keys laid out automatically; drag
-  tables where you want them and Kleos remembers.
+- **Schema as a diagram.** Tables, columns and foreign keys laid out automatically, tables
+  in other schemas included; drag tables where you want them and Kleos remembers. Export it
+  as PNG or SVG.
+- **Change the schema safely.** Create tables, add, rename or retype columns, add indexes —
+  from the diagram's detail panel. Kleos shows the exact SQL first and applies it in one
+  transaction; if a statement fails, nothing changes and Kleos tells you which one.
 - **Edits you review before they run.** Changes are staged, shown as the exact SQL, and
   committed in one transaction — or none of it is.
 - **Exact values, always.** Every value travels as text with its type, so `bigint`,
@@ -80,6 +84,10 @@ and watch your server live — one window, one tab per server.
   <tr>
     <td><img src="docs/screenshots/settings-general.jpg" alt="The Settings window's General pane with System, Light and Dark appearance cards" /><br /><sub><b>Settings</b> — appearance for every window (⌘,).</sub></td>
     <td><img src="docs/screenshots/settings-data.jpg" alt="The Settings window's Data pane with rows per page and a query timeout" /><br /><sub><b>Data settings</b> — rows per page and a query timeout.</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/new-table.jpg" alt="The New table dialog with columns, types, defaults and a primary key" /><br /><sub><b>New table</b> — columns, types, defaults, primary key.</sub></td>
+    <td><img src="docs/screenshots/schema-changes.jpg" alt="Pending schema changes with the exact SQL that will run" /><br /><sub><b>Schema changes</b> — the exact SQL first, then one transaction.</sub></td>
   </tr>
 </table>
 
@@ -186,7 +194,6 @@ artboards in [docs/design](docs/design).
 Kleos ships as a `.dmg` on GitHub Releases, never through the Mac App Store. The plan to 1.0,
 one theme per release — subject to change:
 
-- **0.6 · Schema** — diff two open servers, schema editing with a SQL preview, diagram export
 - **0.7 · Query** — “Run all”, query parameters, formatter and snippets, searchable history
 - **0.8 · Insight** — plans explained in plain language, monitoring alerts and trends
 - **0.9 · Polish** — keyboard and VoiceOver audit, a French interface, performance budgets in CI

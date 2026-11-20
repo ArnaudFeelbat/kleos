@@ -1,5 +1,33 @@
 # Nouveautés de Kleos
 
+## Version 0.6.0 — 20 novembre 2026
+
+### Modifier le schéma, sans risque
+
+- **Créer une table.** Dans l'onglet Schéma, « New table… » : choisissez le schéma, le nom,
+  puis les colonnes (nom, type avec suggestions, valeur par défaut, clé primaire).
+- **Modifier une table existante.** Sélectionnez-la dans le diagramme : le panneau de
+  détail permet d'ajouter une colonne, de la renommer, de changer son type, d'autoriser ou
+  non les valeurs vides (NULL), de changer sa valeur par défaut ou de la supprimer. On peut
+  aussi ajouter ou supprimer un index, renommer ou supprimer la table.
+- **Rien ne part sans votre accord.** Les modifications s'accumulent dans un panneau
+  « Pending schema changes », chacune expliquée en clair, avec **le SQL exact** qui sera
+  exécuté. « Apply » (ou ⌘S) applique tout d'un coup.
+- **Tout ou rien.** Si une instruction échoue (par exemple, interdire NULL sur une colonne
+  qui contient des valeurs vides), rien n'est modifié : Kleos indique laquelle a échoué et
+  pourquoi, et vos modifications restent prêtes à être corrigées.
+- Désactivé sur les connexions en lecture seule.
+
+### Un diagramme plus complet, à partager
+
+- **Les tables des autres schémas** reliées par une clé étrangère apparaissent désormais
+  dans le diagramme, en pointillés. Un double-clic ouvre leur schéma.
+- **Exporter le diagramme** en image : « Export diagram… » propose PNG ou SVG (une image
+  nette à toutes les tailles, qui s'ouvre aussi dans les outils de design), aux couleurs du
+  mode clair ou sombre.
+
+---
+
 ## Version 0.5.0 — 19 novembre 2026
 
 ### Des réglages, enfin

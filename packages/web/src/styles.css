@@ -479,3 +479,9 @@ html [data-sonner-toaster] [data-sonner-toast].kleos-toast [data-close-button]:f
     var(--elev-3),
     0 0 0 3px color-mix(in srgb, var(--ring) 32%, transparent);
 }
+
+/* Type boxes suggest from a <datalist>; Chromium's black picker triangle clashes with the
+   inputs' design. Suggestions still open as you type or press the down arrow. */
+input[list]::-webkit-calendar-picker-indicator {
+  display: none !important;
+}
