@@ -5,6 +5,8 @@ import type {
   ConnectionInput,
   CountRequest,
   CountResult,
+  DdlPreview,
+  DdlResult,
   ExplainResult,
   QueryPage,
   QueryStarted,
@@ -19,6 +21,7 @@ import type {
 } from '@kleos/shared';
 import type {
   DatabaseAdapter,
+  DdlJob,
   ExportJob,
   ImportJob,
   JobContext,
@@ -94,6 +97,14 @@ export class FakeSession implements Session {
   async applyEdits(edits: RowEdit[]): Promise<ApplyEditsResult> {
     this.hit('applyEdits', edits);
     return { applied: edits.length, rows: edits.map(() => null), columns: [] };
+  }
+  async previewDdl(changes: DdlJob[]): Promise<DdlPreview> {
+    this.hit('previewDdl', changes);
+    return { statements: changes.map((change, i) => `-- ${change.op} ${i}`) };
+  }
+  async applyDdl(changes: DdlJob[]): Promise<DdlResult> {
+    this.hit('applyDdl', changes);
+    return { statements: changes.map((change, i) => `-- ${change.op} ${i}`), elapsedMs: 5 };
   }
   async runQuery(sql: string, opts: QueryOptions): Promise<QueryStarted> {
     this.hit('runQuery', sql, opts);
