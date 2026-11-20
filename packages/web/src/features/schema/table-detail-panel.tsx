@@ -1,9 +1,22 @@
 import type { Column, Constraint, ForeignKey, Index, Table, TableRef } from '@kleos/shared';
-import { ArrowRight, ArrowUpRight, Code, Eye, KeyRound, Table2, X } from 'lucide-react';
+import { ArrowRight, ArrowUpRight, Code, Eye, KeyRound, Plus, Table2, X } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { sectionLabel } from '@/features/common/styles';
+import { describeChange } from '@/features/schema-edit/describe';
+import type { ColumnView } from '@/features/schema-edit/overlay';
+import { TableEditDialogs } from '@/features/schema-edit/table-edit-dialogs';
+import {
+  AddButton,
+  ColumnActions,
+  IndexAction,
+  StagedBadge,
+  stagedTitle,
+  TableActions,
+  useTableEditing,
+} from '@/features/schema-edit/table-editing';
+import { useWorkspace } from '@/features/workspace/context';
 import { formatBytes, formatInt } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { shortType } from './er-model';
@@ -54,8 +67,28 @@ const constraintLabel: Record<Constraint['type'], string> = {
   n: 'not null',
 };
 
-/** Right-side panel for the selected table or view: columns, indexes, constraints, and actions. */
+/** "text · 'draft'" for a column as it will be once the staged changes run. */
+function stagedColumnDetail(view: ColumnView): string {
+  const original = view.original;
+  const retyped = view.changes.some((s) => s.change.op === 'alterColumnType' || s.change.op === 'setDefault');
+  if (original && !retyped) return columnDetail(original);
+  const parts = [shortType(view.type)];
+  if (original?.identity) parts.push(original.identity === 'always' ? 'identity always' : 'identity');
+  else if (original?.generated) parts.push('generated');
+  else if (view.default !== null) parts.push(view.default);
+  return parts.join(' · ');
+}
+
+/**
+ * Right-side panel for the selected table or view: columns, indexes, constraints, and actions.
+ * On a writable table it also stages schema changes (0.6): per-row menus, "+" on the Columns and
+ * Indexes titles, and the table menu in the header. Staged changes show inline: a ghost row for
+ * an added column or index, "pending" on an altered column, "drop" on a dropped one.
+ */
 export function TableDetailPanel({ table, foreignKeys, onClose, onOpenTable, onViewData, onOpenInQuery }: Props) {
+  const { readOnly } = useWorkspace();
+  const editing = useTableEditing(table);
+  const { overlay, editable, actions, openDialog } = editing;
   const ownFks = foreignKeys.filter((fk) => fk.schema === table.schema && fk.table === table.name);
   const refOf = (column: string) => {
     for (const fk of ownFks) {
@@ -64,6 +97,9 @@ export function TableDetailPanel({ table, foreignKeys, onClose, onOpenTable, onV
     }
     return null;
   };
+  const liveColumns = overlay.columns.filter((c) => !c.dropped).length;
+  const renamedTo = overlay.renamedBy.length > 0 ? overlay.ref.name : null;
+  const ghostRow = 'bg-staged-insert/45 hover:bg-staged-insert/60 dark:hover:bg-staged-insert/60';
 
   return (
     <aside
@@ -79,43 +115,100 @@ export function TableDetailPanel({ table, foreignKeys, onClose, onOpenTable, onV
               <Table2 className="size-3.5" aria-hidden="true" />
             )}
           </span>
-          <h2 className="truncate text-[15px] font-semibold tracking-[-0.012em]">{table.name}</h2>
+          <h2
+            className={cn(
+              'truncate text-[15px] font-semibold tracking-[-0.012em]',
+              overlay.dropped && 'text-muted-foreground line-through',
+            )}
+          >
+            {table.name}
+          </h2>
           <Badge variant="outline" className="h-5 font-mono text-[11px]">
             {table.schema}
           </Badge>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="text-muted-foreground ml-auto"
-            aria-label="Close details"
-            title="Close (Esc)"
-            onClick={onClose}
-          >
-            <X aria-hidden="true" />
-          </Button>
+          <span className="ml-auto flex shrink-0 items-center gap-0.5">
+            {editable && <TableActions editing={editing} />}
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="text-muted-foreground"
+              aria-label="Close details"
+              title="Close (Esc)"
+              onClick={onClose}
+            >
+              <X aria-hidden="true" />
+            </Button>
+          </span>
         </div>
+        {renamedTo && (
+          <span className="flex items-center gap-1.5 text-xs">
+            <StagedBadge kind="pending" />
+            <span className="text-muted-foreground">Renamed to</span>
+            <span className="truncate font-mono">{renamedTo}</span>
+          </span>
+        )}
         <span className="text-muted-foreground tabular text-xs">{relationSummary(table)}</span>
         {table.comment && (
           <p className="text-muted-foreground border-border border-l-2 pl-2 text-xs italic">{table.comment}</p>
         )}
+        {overlay.dropped && (
+          <div className="bg-staged-delete text-staged-delete-foreground flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs">
+            <span className="flex-1">Staged to be dropped when you apply.</span>
+            {!readOnly && (
+              <Button
+                type="button"
+                variant="outline"
+                size="xs"
+                onClick={() => overlay.dropped && actions.remove(overlay.dropped.id)}
+              >
+                Keep table
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pt-1 pb-4">
-        <SectionTitle count={table.columns.length}>Columns</SectionTitle>
-        {table.columns.map((column) => {
-          const isPk = table.primaryKey.includes(column.name);
-          const ref = refOf(column.name);
+        <SectionTitle
+          count={liveColumns}
+          action={editable && <AddButton label="Add column" onClick={() => openDialog({ kind: 'addColumn' })} />}
+        >
+          Columns
+        </SectionTitle>
+        {overlay.columns.map((view) => {
+          const column = view.original;
+          const isPk = !!column && table.primaryKey.includes(column.name);
+          const ref = column && !view.dropped ? refOf(column.name) : null;
+          const detail = stagedColumnDetail(view);
           return (
-            <Row key={column.name}>
+            <Row key={view.key} className={cn(view.addedBy && ghostRow)}>
               {isPk ? (
                 <KeyRound className="text-primary-key size-3 shrink-0" role="img" aria-label="Primary key" />
               ) : ref ? (
                 <ArrowUpRight className="text-brand-text size-3 shrink-0" role="img" aria-label="Foreign key" />
+              ) : view.addedBy ? (
+                <Plus className="text-staged-insert-foreground size-3 shrink-0" aria-hidden="true" />
               ) : (
                 <span className="w-3 shrink-0" />
               )}
-              <span className={cn('truncate', isPk && 'font-semibold')}>{column.name}</span>
-              {column.nullable && (
+              <span
+                className={cn(
+                  'truncate',
+                  isPk && 'font-semibold',
+                  view.dropped && 'text-muted-foreground line-through',
+                )}
+                title={column && view.name !== column.name ? `Was ${column.name}` : undefined}
+              >
+                {view.name}
+              </span>
+              {view.addedBy ? (
+                <StagedBadge kind="new" title={describeChange(view.addedBy.change)} />
+              ) : view.dropped ? (
+                <StagedBadge kind="drop" title={describeChange(view.dropped.change)} />
+              ) : view.changes.length > 0 ? (
+                <StagedBadge kind="pending" title={stagedTitle(view)} />
+              ) : null}
+              {view.nullable && !view.dropped && (
                 <Badge variant="outline" className="text-muted-foreground h-[18px] px-1.5 text-[10px] font-medium">
                   nullable
                 </Badge>
@@ -124,7 +217,7 @@ export function TableDetailPanel({ table, foreignKeys, onClose, onOpenTable, onV
                 <button
                   type="button"
                   className="text-brand-text hover:bg-brand-soft -mr-1 ml-auto shrink-0 truncate rounded-[4px] px-1 font-mono text-[11px] underline-offset-2 hover:underline"
-                  title={`${columnDetail(column)} — open ${ref.schema}.${ref.name}`}
+                  title={`${detail} — open ${ref.schema}.${ref.name}`}
                   onClick={() => onOpenTable({ schema: ref.schema, name: ref.name })}
                 >
                   → {ref.schema === table.schema ? '' : `${ref.schema}.`}
@@ -133,24 +226,45 @@ export function TableDetailPanel({ table, foreignKeys, onClose, onOpenTable, onV
               ) : (
                 <span
                   className="text-muted-foreground ml-auto max-w-[60%] shrink-0 truncate font-mono text-[11px]"
-                  title={columnDetail(column)}
+                  title={detail}
                 >
-                  {columnDetail(column)}
+                  {detail}
                 </span>
               )}
+              {editable && <ColumnActions column={view} isPrimaryKey={isPk} editing={editing} />}
             </Row>
           );
         })}
 
-        {table.indexes.length > 0 && (
+        {(overlay.indexes.length > 0 || editable) && (
           <>
-            <SectionTitle count={table.indexes.length}>Indexes</SectionTitle>
-            {table.indexes.map((index) => (
-              <Row key={index.name} className="font-mono text-[11.5px]">
-                <span className="truncate" title={index.definition}>
-                  {index.name}
+            <SectionTitle
+              count={overlay.indexes.filter((i) => !i.dropped).length}
+              action={editable && <AddButton label="Add index" onClick={() => openDialog({ kind: 'addIndex' })} />}
+            >
+              Indexes
+            </SectionTitle>
+            {overlay.indexes.length === 0 && <p className="text-muted-foreground py-1.5 text-xs">No indexes.</p>}
+            {overlay.indexes.map((index) => (
+              <Row key={index.key} className={cn('font-mono text-[11.5px]', index.addedBy && ghostRow)}>
+                <span
+                  className={cn(
+                    'truncate',
+                    !index.name && 'text-muted-foreground font-sans italic',
+                    index.dropped && 'text-muted-foreground line-through',
+                  )}
+                  title={index.original?.definition}
+                >
+                  {index.name ?? 'name generated by Postgres'}
                 </span>
-                <span className="text-muted-foreground ml-auto shrink-0">{indexSummary(index)}</span>
+                {index.addedBy && <StagedBadge kind="new" title={describeChange(index.addedBy.change)} />}
+                {index.dropped && <StagedBadge kind="drop" title={describeChange(index.dropped.change)} />}
+                <span className="text-muted-foreground ml-auto shrink-0">
+                  {index.original
+                    ? indexSummary(index.original)
+                    : `${index.method} (${index.columns.join(', ')})${index.unique ? ' unique' : ''}`}
+                </span>
+                {editable && <IndexAction index={index} table={table} editing={editing} />}
               </Row>
             ))}
           </>
@@ -184,15 +298,24 @@ export function TableDetailPanel({ table, foreignKeys, onClose, onOpenTable, onV
           Open in query
         </Button>
       </div>
+
+      <TableEditDialogs
+        dialog={editing.dialog}
+        onClose={() => openDialog(null)}
+        table={table}
+        overlay={overlay}
+        actions={actions}
+      />
     </aside>
   );
 }
 
-function SectionTitle({ children, count }: { children: ReactNode; count?: number }) {
+function SectionTitle({ children, count, action }: { children: ReactNode; count?: number; action?: ReactNode }) {
   return (
-    <h3 className={cn(sectionLabel, 'mt-5 mb-1 flex items-center justify-between first:mt-3.5')}>
+    <h3 className={cn(sectionLabel, 'mt-5 mb-1 flex items-center gap-2 first:mt-3.5')}>
       {children}
-      {count !== undefined && <span className="font-mono font-medium tracking-normal">{count}</span>}
+      {count !== undefined && <span className="ml-auto font-mono font-medium tracking-normal">{count}</span>}
+      {action}
     </h3>
   );
 }
@@ -201,7 +324,7 @@ function Row({ children, className }: { children: ReactNode; className?: string 
   return (
     <div
       className={cn(
-        'hover:bg-foreground/[0.025] -mx-2 flex items-center gap-2 border-b px-2 py-[7px] text-xs dark:hover:bg-white/[0.03]',
+        'group/row hover:bg-foreground/[0.025] -mx-2 flex items-center gap-2 border-b px-2 py-[7px] text-xs dark:hover:bg-white/[0.03]',
         className,
       )}
     >

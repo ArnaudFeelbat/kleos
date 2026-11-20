@@ -33,6 +33,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/features/common/empty-state';
+import { NewTableButton } from '@/features/schema-edit/new-table-button';
+import { SchemaPendingPanel } from '@/features/schema-edit/schema-pending-panel';
 import { useWorkspace } from '@/features/workspace/context';
 import { findRelation, selectStarSql } from '@/features/workspace/sidebar-model';
 import { TabToolbar } from '@/features/workspace/tab-toolbar';
@@ -40,6 +42,7 @@ import { api, errorText, queryKeys } from '@/lib/api';
 import { formatInt } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { buildErGraph, NEIGHBOUR_ONLY_THRESHOLD, type ErGraph } from './er-model';
+import { ExportDiagramMenu } from './export/export-diagram-menu';
 import { layoutWithElk, placeMissing, type XY } from './layout';
 import { TableDetailPanel } from './table-detail-panel';
 import { TableNode, type TableFlowNode } from './table-node';
@@ -68,9 +71,13 @@ export function SchemaTab() {
     );
   }
   return (
-    <ReactFlowProvider key={currentSchema}>
-      <ErDiagram model={schemaModel} schema={currentSchema} />
-    </ReactFlowProvider>
+    <>
+      <ReactFlowProvider key={currentSchema}>
+        <ErDiagram model={schemaModel} schema={currentSchema} />
+      </ReactFlowProvider>
+      {/* Staged schema changes (0.6): below the diagram and the detail panel, like the data tab's. */}
+      <SchemaPendingPanel />
+    </>
   );
 }
 
@@ -219,11 +226,13 @@ function ErDiagram({ model, schema }: { model: SchemaModel; schema: string }) {
   return (
     <div className="flex min-h-0 flex-1">
       <TabToolbar tab="schema">
+        <NewTableButton schema={schema} />
         <FocusSearch model={model} schema={schema} onFocus={focusTable} />
         <Button variant="outline" size="sm" onClick={() => void autoLayout()} disabled={graph.nodes.length === 0}>
           <LayoutGrid aria-hidden="true" />
           Auto layout
         </Button>
+        <ExportDiagramMenu graph={graph} schema={schema} />
       </TabToolbar>
 
       <section aria-label="ER diagram" className="kleos-er relative min-w-0 flex-1">
@@ -293,7 +302,11 @@ function ErDiagram({ model, schema }: { model: SchemaModel; schema: string }) {
               <EmptyState
                 icon={Network}
                 title={`No tables in ${schema}.`}
-                hint="Pick another schema in the sidebar, or create a table from the Query tab."
+                hint={
+                  ws.readOnly
+                    ? 'Pick another schema in the sidebar.'
+                    : 'Pick another schema in the sidebar, or start one with “New table…” in the toolbar.'
+                }
               />
             ) : (
               <EmptyState
