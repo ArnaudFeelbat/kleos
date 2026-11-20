@@ -308,6 +308,78 @@ try {
     await sleep(1200);
     await win.shot('05-schema-diagram');
   });
+  await step('stage a new table, read its exact SQL, apply it', async () => {
+    const field = (label) => `document.querySelector('[role=dialog] [aria-label=${JSON.stringify(label)}]')`;
+    await win.click(`${visible('button')}.find((b) => b.textContent.trim().startsWith('New table'))`, 'New table…');
+    await win.waitFor(
+      `!!document.querySelector('[role=dialog] input[placeholder="e.g. invoices"]')`,
+      'new table dialog',
+    );
+    await win.click(`document.querySelector('[role=dialog] input[placeholder="e.g. invoices"]')`, 'table name');
+    await win.type('tour_notes');
+    await win.click(field('Column 1 name'), 'column 1 name');
+    await win.type('id');
+    await win.click(field('Column 1 type'), 'column 1 type');
+    await win.type('bigint');
+    await win.click(field('Column 1 primary key'), 'primary key');
+    await win.click(
+      `[...document.querySelectorAll('[role=dialog] button')].find((b) => b.textContent.trim() === 'Add column')`,
+      'Add column',
+    );
+    await win.click(field('Column 2 name'), 'column 2 name');
+    await win.type('body');
+    await win.click(field('Column 2 type'), 'column 2 type');
+    await win.type('text');
+    await sleep(300);
+    await win.shot('05a-new-table-dialog');
+    await win.click(
+      `[...document.querySelectorAll('[role=dialog] button')].find((b) => b.textContent.trim() === 'Stage table')`,
+      'Stage table',
+    );
+    await win.waitFor(
+      `document.querySelector('[aria-label="SQL that will run"]')?.textContent.toLowerCase().includes('create table')`,
+      'previewed SQL',
+      15000,
+    );
+    await sleep(500);
+    await win.shot('05b-schema-pending');
+    await win.click(`${visible('button')}.find((b) => /^Apply [0-9]/.test(b.textContent.trim()))`, 'Apply');
+    await win.waitFor(
+      `[...document.querySelectorAll('[data-sonner-toast]')].some((t) => t.textContent.includes('Applied'))`,
+      'applied toast',
+      20000,
+    );
+    await win.waitFor(`${front}.textContent.includes('tour_notes')`, 'new table in the sidebar', 20000);
+    await sleep(800);
+    await win.shot('05c-schema-applied');
+  });
+  await step('export the diagram as SVG and PNG', async () => {
+    for (const [label, file] of [
+      ['SVG image', `${pgInfo.schema}-diagram.svg`],
+      ['PNG image', `${pgInfo.schema}-diagram.png`],
+    ]) {
+      await win.click(
+        `${visible('button')}.find((b) => b.textContent.trim().startsWith('Export diagram'))`,
+        'Export diagram…',
+      );
+      await win.click(
+        `[...document.querySelectorAll('[role=menu] [role=menuitem]')].find((i) => i.textContent.trim().startsWith(${JSON.stringify(label)}))`,
+        label,
+      );
+      await win.waitFor(
+        `[...document.querySelectorAll('[data-sonner-toast]')].some((t) => t.textContent.includes(${JSON.stringify(file)}))`,
+        `export toast for ${file}`,
+        20000,
+      );
+    }
+    const svg = readFileSync(join(filesDir, `${pgInfo.schema}-diagram.svg`), 'utf8');
+    if (!svg.startsWith('<svg') && !svg.startsWith('<?xml')) throw new Error('not an SVG');
+    if (!svg.includes('tour_notes')) throw new Error('the SVG lacks the new table');
+    const png = readFileSync(join(filesDir, `${pgInfo.schema}-diagram.png`));
+    if (png[0] !== 0x89 || png[1] !== 0x50) throw new Error('not a PNG');
+    writeFileSync(join(shotDir, '05d-exported-diagram.png'), png);
+    console.log(`  ${pgInfo.schema}-diagram.svg ${svg.length} bytes · .png ${png.length} bytes`);
+  });
   await step(`open ${pgInfo.table} in Data`, async () => {
     await win.click(
       `[...${front}.querySelectorAll('button')].find((b) => b.textContent.trim().startsWith(${JSON.stringify(pgInfo.table)}))`,
