@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SavedConnection, SchemaModel } from '@kleos/shared';
-import { buildPaletteEntries, type PaletteInput } from './palette-model';
+import { buildPaletteEntries, paletteFilter, paletteKeywords, type PaletteInput } from './palette-model';
 import { HOME, type ConnectionTab } from './tabs-store';
 
 const favorite = (id: string, nickname: string): SavedConnection => ({
@@ -92,7 +92,7 @@ describe('buildPaletteEntries', () => {
     expect(front.some((e) => e.id === 'action:home')).toBe(true);
   });
 
-  it('lists saved queries of open servers, with their chart type', () => {
+  it('lists saved queries of open servers to run (once typing) or open, with their chart type', () => {
     const query = {
       id: 'q1',
       connectionId: 'c1',
@@ -106,10 +106,70 @@ describe('buildPaletteEntries', () => {
       input({ tabs: [tab('s1', 'c1', 'dev')], active: 's1', saved: { s1: [query] } }),
     );
     const saved = entries.filter((e) => e.group === 'saved');
-    expect(saved.map((e) => [e.label, e.icon, e.detail])).toEqual([
-      ['revenue by channel', 'saved-chart', 'line chart'],
+    expect(saved.map((e) => [e.label, e.icon, e.detail, e.searchOnly ?? false])).toEqual([
+      ['Run saved query: revenue by channel', 'run', 'line chart', true],
+      ['revenue by channel', 'saved-chart', 'line chart', false],
     ]);
-    expect(saved[0]?.run).toEqual({ kind: 'open-saved', sid: 's1', query });
+    expect(saved[0]?.run).toEqual({ kind: 'run-saved', sid: 's1', query });
+    expect(saved[1]?.run).toEqual({ kind: 'open-saved', sid: 's1', query });
+  });
+
+  it('ranks "Run saved query" first when a saved query’s name is typed, so Enter runs it', () => {
+    const query = {
+      id: 'q1',
+      connectionId: 'c1',
+      name: 'revenue by channel',
+      sql: 'select $1',
+      chart: null,
+      createdAt: '',
+      updatedAt: '',
+    };
+    const entries = buildPaletteEntries(
+      input({ tabs: [tab('s1', 'c1', 'dev')], active: 's1', saved: { s1: [query] } }),
+    );
+    const [runIt, openIt] = entries.filter((e) => e.group === 'saved');
+    const score = (e: typeof runIt, search: string) => paletteFilter(e!.id, search, paletteKeywords(e!));
+    for (const search of ['rev', 'revenue by channel', 'channel']) {
+      expect(score(runIt, search)).toBeGreaterThan(score(openIt, search));
+      expect(score(openIt, search)).toBeGreaterThan(0);
+    }
+    // The label still matches as words: "run revenue" finds only the run entry.
+    expect(score(runIt, 'run revenue')).toBeGreaterThan(0);
+    expect(score(openIt, 'run revenue')).toBe(0);
+  });
+
+  it('offers snippets to insert into the front server, once typing', () => {
+    const snippets = [
+      { id: 'n1', name: 'Locks', body: '\n-- who blocks whom\nselect * from pg_locks', createdAt: '', updatedAt: '' },
+    ];
+    expect(
+      buildPaletteEntries(input({ tabs: [tab('s1', 'c1', 'dev')], active: HOME, snippets })).some(
+        (e) => e.group === 'snippets',
+      ),
+    ).toBe(false);
+    const entries = buildPaletteEntries(input({ tabs: [tab('s1', 'c1', 'dev')], active: 's1', snippets }));
+    const [entry] = entries.filter((e) => e.group === 'snippets');
+    expect(entry).toMatchObject({
+      label: 'Insert snippet: Locks',
+      match: 'Locks',
+      detail: '-- who blocks whom',
+      icon: 'snippet',
+      searchOnly: true,
+      run: { kind: 'insert-sql', sid: 's1', text: snippets[0]!.body },
+    });
+    expect(paletteFilter(entry!.id, 'locks', paletteKeywords(entry!))).toBe(1);
+    expect(paletteFilter(entry!.id, 'insert snippet', paletteKeywords(entry!))).toBeGreaterThan(0);
+  });
+
+  it('offers Search history… for the front server', () => {
+    const home = buildPaletteEntries(input({ tabs: [tab('s1', 'c1', 'dev')], active: HOME }));
+    expect(home.some((e) => e.id === 'action:search-history')).toBe(false);
+    const front = buildPaletteEntries(input({ tabs: [tab('s1', 'c1', 'dev')], active: 's1' }));
+    expect(front.find((e) => e.id === 'action:search-history')).toMatchObject({
+      label: 'Search history…',
+      detail: 'dev',
+      run: { kind: 'search-history', sid: 's1' },
+    });
   });
 
   it('marks the current appearance', () => {

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bookmark, ChartLine, CircleX, Ellipsis, History } from 'lucide-react';
-import { useState } from 'react';
+import { Bookmark, Braces, ChartLine, Ellipsis, History, type LucideIcon } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import type { HistoryEntry, SavedQuery } from '@kleos/shared';
 import {
@@ -24,8 +24,11 @@ import { Callout } from '@/features/common/callout';
 import { EmptyState } from '@/features/common/empty-state';
 import { SkeletonList } from '@/features/common/skeletons';
 import { segmentedItem, segmentedList } from '@/features/common/styles';
+import { HistoryPanel } from '@/features/history/history-panel';
+import { takeHistorySearchRequest, useHistorySearchRequest } from '@/features/history/search-request';
+import { SnippetsPanel } from '@/features/snippets/snippets-panel';
+import { useWorkspace } from '@/features/workspace/context';
 import { api, errorText, queryKeys } from '@/lib/api';
-import { formatClock, formatInt, formatMs } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { NameDialog } from './name-dialog';
 
@@ -40,33 +43,57 @@ type SidePanelProps = {
   onSavedChanged(saved: SavedQuery | { id: string; deleted: true }): void;
 };
 
+type PanelTab = 'history' | 'saved' | 'snippets';
+const panelTabs: { tab: PanelTab; label: string; icon: LucideIcon }[] = [
+  { tab: 'history', label: 'History', icon: History },
+  { tab: 'saved', label: 'Saved', icon: Bookmark },
+  { tab: 'snippets', label: 'Snippets', icon: Braces },
+];
+
 const chartTypeName = { line: 'Line', bar: 'Bar', scatter: 'Scatter' } as const;
 
-/** History of runs (recorded by the server) and saved queries of this connection. */
+/**
+ * History of runs (recorded by the server, searchable across servers), saved queries of this
+ * connection, and the snippets shared by every server.
+ */
 export function SidePanel(props: SidePanelProps) {
-  const [tab, setTab] = useState<'history' | 'saved'>('history');
+  const { sid } = useWorkspace();
+  const [tab, setTab] = useState<PanelTab>('history');
   const saved = useQuery({
     queryKey: queryKeys.savedQueries(props.connectionId),
     queryFn: () => api.savedQueries(props.connectionId),
   });
+
+  // ⌘K "Search history…": switch to History (state adjusted while rendering, React's pattern
+  // for state that follows a changing input), then mark the request taken.
+  const searchRequest = useHistorySearchRequest(sid);
+  const [focusRequest, setFocusRequest] = useState<number | undefined>(undefined);
+  if (searchRequest !== undefined && searchRequest !== focusRequest) {
+    setFocusRequest(searchRequest);
+    setTab('history');
+  }
+  useEffect(() => {
+    if (searchRequest !== undefined) takeHistorySearchRequest(sid, searchRequest);
+  }, [sid, searchRequest]);
+
   return (
     <aside
-      aria-label="History and saved queries"
+      aria-label="History, saved queries and snippets"
       className="bg-background flex min-h-0 w-[280px] shrink-0 flex-col border-l"
     >
       <div className="flex min-h-11 items-center border-b px-3 py-1.5">
-        <div role="tablist" aria-label="History or saved" className={cn(segmentedList, 'flex w-full')}>
-          {(['history', 'saved'] as const).map((t) => (
+        <div role="tablist" aria-label="Side panel" className={cn(segmentedList, 'flex w-full')}>
+          {panelTabs.map(({ tab: t, label, icon: Icon }) => (
             <button
               key={t}
               type="button"
               role="tab"
               aria-selected={tab === t}
               onClick={() => setTab(t)}
-              className={cn(segmentedItem, 'flex-1')}
+              className={cn(segmentedItem, 'flex-1 gap-1 px-1.5')}
             >
-              {t === 'history' ? <History aria-hidden="true" /> : <Bookmark aria-hidden="true" />}
-              {t === 'history' ? 'History' : 'Saved'}
+              <Icon aria-hidden="true" />
+              {label}
               {t === 'saved' && saved.data && (
                 <span className="text-muted-foreground font-mono text-[11px] font-normal">{saved.data.length}</span>
               )}
@@ -74,71 +101,17 @@ export function SidePanel(props: SidePanelProps) {
           ))}
         </div>
       </div>
-      {tab === 'history' ? (
-        <HistoryList {...props} />
-      ) : (
-        <SavedList {...props} items={saved.data} loading={saved.isPending} error={saved.error} />
+      {tab === 'history' && (
+        <HistoryPanel
+          connectionId={props.connectionId}
+          connectionName={props.connectionName}
+          onLoadHistory={props.onLoadHistory}
+          focusRequest={focusRequest}
+        />
       )}
+      {tab === 'saved' && <SavedList {...props} items={saved.data} loading={saved.isPending} error={saved.error} />}
+      {tab === 'snippets' && <SnippetsPanel />}
     </aside>
-  );
-}
-
-function HistoryList({ connectionId, connectionName, onLoadHistory }: SidePanelProps) {
-  const history = useQuery({ queryKey: queryKeys.history(connectionId), queryFn: () => api.history(connectionId) });
-  return (
-    <>
-      <div className="min-h-0 flex-1 overflow-auto">
-        {history.isPending && <ListSkeleton />}
-        {history.isError && (
-          <Callout tone="error" title="Couldn’t load the history" className="m-3 px-3 py-2.5">
-            <span className="text-xs break-words">{errorText(history.error)}</span>
-          </Callout>
-        )}
-        {history.data?.length === 0 && (
-          <EmptyState size="sm" icon={History} title="No runs yet" hint="Runs appear here as you execute statements." />
-        )}
-        {history.data?.map((h) => (
-          <button
-            key={h.id}
-            type="button"
-            className="group hover:bg-foreground/[0.03] focus-visible:bg-brand-soft flex w-full flex-col gap-1 border-b px-3 py-2.5 text-left outline-none dark:hover:bg-white/[0.03]"
-            title="Load into the current tab"
-            onClick={() => onLoadHistory(h)}
-          >
-            <span className="text-muted-foreground flex items-center gap-1.5 text-[11px]">
-              <span className="font-mono">{formatClock(h.ranAt, false)}</span>
-              {h.error ? (
-                <>
-                  <span className="bg-error-bg text-foreground inline-flex h-[18px] items-center gap-1 rounded-[5px] px-1.5 font-mono text-[10.5px] font-semibold shadow-[inset_0_0_0_1px_var(--error-line)]">
-                    <CircleX className="text-destructive size-2.5" aria-hidden="true" />
-                    {h.error.split(' ')[0]}
-                  </span>
-                  <span className="truncate">{h.error.split(' ').slice(1).join(' ')}</span>
-                </>
-              ) : h.cancelled ? (
-                <span>· cancelled{h.elapsedMs !== null ? ` after ${formatMs(h.elapsedMs)}` : ''}</span>
-              ) : (
-                <>
-                  {h.kind === 'explain' && <span>· Explain</span>}
-                  {h.elapsedMs !== null && <span>· {formatMs(h.elapsedMs)}</span>}
-                  {h.rowCount !== null && h.kind === 'query' && (
-                    <span>
-                      · {formatInt(h.rowCount)} row{h.rowCount === 1 ? '' : 's'}
-                    </span>
-                  )}
-                </>
-              )}
-            </span>
-            <span className="text-foreground/85 group-hover:text-foreground truncate font-mono text-xs">
-              {h.sql.replace(/\s+/g, ' ').trim()}
-            </span>
-          </button>
-        ))}
-      </div>
-      <p className="bg-sidebar/60 text-muted-foreground m-0 border-t px-3 py-2.5 text-[11px]">
-        Keeps the latest 1,000 runs for {connectionName}.
-      </p>
-    </>
   );
 }
 

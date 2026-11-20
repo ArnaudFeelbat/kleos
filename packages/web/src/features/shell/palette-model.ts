@@ -1,15 +1,19 @@
-import type { SavedConnection, SavedQuery, SchemaModel, TableRef } from '@kleos/shared';
+import type { SavedConnection, SavedQuery, SchemaModel, Snippet, TableRef } from '@kleos/shared';
 import type { WorkspaceTab } from '@/features/workspace/context';
+import { firstLine } from '@/features/snippets/first-line';
 import type { Appearance } from '@/lib/bridge';
 import { HOME, type ActiveTab, type ConnectionTab } from './tabs-store';
 
-export type PaletteGroup = 'servers' | 'connections' | 'saved' | 'tables' | 'actions';
+export type PaletteGroup = 'servers' | 'connections' | 'saved' | 'snippets' | 'tables' | 'actions';
 
 export type PaletteRun =
   | { kind: 'activate'; sid: string }
   | { kind: 'connect'; connectionId: string }
   | { kind: 'open-table'; sid: string; ref: TableRef }
   | { kind: 'open-saved'; sid: string; query: SavedQuery }
+  | { kind: 'run-saved'; sid: string; query: SavedQuery }
+  | { kind: 'insert-sql'; sid: string; text: string }
+  | { kind: 'search-history'; sid: string }
   | { kind: 'tab'; sid: string; tab: WorkspaceTab }
   | { kind: 'refresh-schema'; sid: string }
   | { kind: 'home' }
@@ -25,6 +29,9 @@ export type PaletteIcon =
   | 'view'
   | 'saved'
   | 'saved-chart'
+  | 'run'
+  | 'snippet'
+  | 'history'
   | 'schema'
   | 'data'
   | 'query'
@@ -43,6 +50,11 @@ export type PaletteEntry = {
   id: string;
   group: PaletteGroup;
   label: string;
+  /**
+   * What the search ranks against when it is not the label: "Run saved query: revenue" ranks
+   * as "revenue", so typing a name puts its entries first. The label still matches as a keyword.
+   */
+  match?: string;
   /** Secondary text on the right: server, host, or shortcut context. */
   detail?: string;
   keywords: string[];
@@ -51,6 +63,8 @@ export type PaletteEntry = {
   dot?: string;
   shortcut?: string;
   checked?: boolean;
+  /** Listed only once something is typed, so the empty palette stays a short list. */
+  searchOnly?: boolean;
   run: PaletteRun;
 };
 
@@ -62,6 +76,8 @@ export type PaletteInput = {
   schemas: Record<string, SchemaModel | undefined>;
   /** Saved queries per open tab (sid), when loaded. */
   saved?: Record<string, SavedQuery[] | undefined>;
+  /** Snippets (shared by every server), when loaded. */
+  snippets?: Snippet[];
   appearance: Appearance | null;
   colorOf: (color: SavedConnection['color']) => string | undefined;
   mod: string;
@@ -86,6 +102,21 @@ export function paletteScore(_value: string, search: string, keywords?: string[]
   return 0.3;
 }
 
+/**
+ * cmdk ranking: paletteScore, with "open saved query" entries a hair below the matching "Run
+ * saved query" entry. Typing a saved query's name then Enter runs it (0.7: ⌘K, name, Enter,
+ * Enter), whatever cmdk's order was before; opening it without running stays one ↓ away.
+ */
+export function paletteFilter(value: string, search: string, keywords?: string[]): number {
+  const score = paletteScore(value, search, keywords);
+  return value.startsWith('saved:') ? score * 0.99 : score;
+}
+
+/** cmdk keywords of an entry: what it ranks against first (see paletteScore), then the rest. */
+export function paletteKeywords(entry: PaletteEntry): string[] {
+  return [entry.match ?? entry.label, entry.detail ?? '', ...entry.keywords, ...(entry.match ? [entry.label] : [])];
+}
+
 /** Table and view entries above this count are left out; a typed search narrows first. */
 export const MAX_RELATIONS = 3000;
 
@@ -97,11 +128,12 @@ const workspaceTabs: { tab: WorkspaceTab; label: string; icon: PaletteIcon }[] =
 ];
 
 /**
- * Everything ⌘K can jump to, in display order: open servers, favorites not yet open, tables
- * and views of every open server, then actions for the front tab and the window.
+ * Everything ⌘K can jump to, in display order: open servers, favorites not yet open, saved
+ * queries of open servers (run or open), snippets to insert in the front server, tables and
+ * views of every open server, then actions for the front tab and the window.
  */
 export function buildPaletteEntries(input: PaletteInput): PaletteEntry[] {
-  const { tabs, active, favorites, schemas, saved = {}, appearance, colorOf, mod } = input;
+  const { tabs, active, favorites, schemas, saved = {}, snippets = [], appearance, colorOf, mod } = input;
   const entries: PaletteEntry[] = [];
   const front = tabs.find((t) => t.sid === active);
 
@@ -136,14 +168,42 @@ export function buildPaletteEntries(input: PaletteInput): PaletteEntry[] {
 
   for (const t of tabs) {
     for (const q of saved[t.sid] ?? []) {
+      const detail = tabs.length > 1 ? t.nickname : q.chart ? `${q.chart.type} chart` : undefined;
+      entries.push({
+        id: `run-saved:${t.sid}:${q.id}`,
+        group: 'saved',
+        label: `Run saved query: ${q.name}`,
+        match: q.name,
+        detail,
+        keywords: ['run', 'execute', 'saved', 'query', t.nickname],
+        icon: 'run',
+        searchOnly: true,
+        run: { kind: 'run-saved', sid: t.sid, query: q },
+      });
       entries.push({
         id: `saved:${t.sid}:${q.id}`,
         group: 'saved',
         label: q.name,
-        detail: tabs.length > 1 ? t.nickname : q.chart ? `${q.chart.type} chart` : undefined,
+        detail,
         keywords: ['saved', 'query', q.chart ? 'chart' : 'sql', t.nickname],
         icon: q.chart ? 'saved-chart' : 'saved',
         run: { kind: 'open-saved', sid: t.sid, query: q },
+      });
+    }
+  }
+
+  if (front) {
+    for (const s of snippets) {
+      entries.push({
+        id: `snippet:${s.id}`,
+        group: 'snippets',
+        label: `Insert snippet: ${s.name}`,
+        match: s.name,
+        detail: firstLine(s.body),
+        keywords: ['insert', 'snippet', 'paste', 'sql'],
+        icon: 'snippet',
+        searchOnly: true,
+        run: { kind: 'insert-sql', sid: front.sid, text: s.body },
       });
     }
   }
@@ -168,6 +228,7 @@ export function buildPaletteEntries(input: PaletteInput): PaletteEntry[] {
           detail: tabs.length > 1 ? `${r.schema} · ${t.nickname}` : r.schema,
           keywords: [r.schema, `${r.schema}.${r.name}`, icon, t.nickname],
           icon,
+          searchOnly: true,
           run: { kind: 'open-table', sid: t.sid, ref: { schema: r.schema, name: r.name } },
         });
       }
@@ -194,6 +255,15 @@ export function buildPaletteEntries(input: PaletteInput): PaletteEntry[] {
       keywords: ['reload', 'introspect', 'catalog'],
       icon: 'refresh',
       run: { kind: 'refresh-schema', sid: front.sid },
+    });
+    entries.push({
+      id: 'action:search-history',
+      group: 'actions',
+      label: 'Search history…',
+      detail: front.nickname,
+      keywords: ['history', 'runs', 'past', 'find', 'previous'],
+      icon: 'history',
+      run: { kind: 'search-history', sid: front.sid },
     });
   }
   if (active !== HOME) {
