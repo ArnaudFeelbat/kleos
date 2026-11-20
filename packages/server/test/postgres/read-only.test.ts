@@ -273,6 +273,41 @@ describe('explain on a read-only session', () => {
   });
 });
 
+describe('bind parameters on a read-only session (0.7)', () => {
+  it('reads with parameters inside the read-only wrapper, and still refuses a write', async () => {
+    const read = await session.runQuery(
+      'select name, transaction_read_only from shop.customers, (select current_setting($2) as transaction_read_only) t where id = $1',
+      {
+        qid: 'ro-p1',
+        tabId: 'ro-params',
+        pageSize: 10,
+        params: ['2', 'transaction_read_only'],
+      },
+    );
+    expect(read.rows).toEqual([['Grace', 'on']]);
+
+    const write = await rejectionOf(
+      session.runQuery('update shop.customers set name = $1 where id = $2', {
+        qid: 'ro-p2',
+        tabId: 'ro-params',
+        pageSize: 10,
+        params: ['hacked', '1'],
+      }),
+    );
+    expect(write.code).toBe('25006');
+    const explained = await rejectionOf(
+      session.explain('update shop.customers set name = $1 where id = $2', {
+        qid: 'ro-p3',
+        tabId: 'ro-params',
+        params: ['hacked', '1'],
+      }),
+    );
+    expect(explained.code).toBe('25006');
+    expect(await adaName()).toBe('Ada');
+    await expectStillReadOnly('ro-params');
+  });
+});
+
 describe("the grid's raw WHERE on a read-only session", () => {
   const customers = { schema: 'shop', name: 'customers' };
   const rows = (where: string) =>

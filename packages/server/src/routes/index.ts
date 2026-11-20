@@ -9,6 +9,7 @@ import { registerLayoutRoutes } from './layouts';
 import { registerQueryRoutes } from './queries';
 import { registerSavedQueryRoutes } from './saved-queries';
 import { registerSessionRoutes } from './sessions';
+import { registerSnippetRoutes } from './snippets';
 import { registerStatsRoutes } from './stats';
 import { registerWindowStateRoutes } from './window-state';
 
@@ -25,4 +26,5 @@ export function registerRoutes(api: Hono, deps: ServerDeps): void {
   registerGridLayoutRoutes(api, deps);
   registerHistoryRoutes(api, deps);
   registerSavedQueryRoutes(api, deps);
+  registerSnippetRoutes(api, deps);
 }

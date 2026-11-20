@@ -72,7 +72,7 @@ export function registerQueryRoutes(api: Hono, deps: ServerDeps): void {
       connection.id,
       req.sql,
       'query',
-      () => session.runQuery(req.sql, { qid: req.qid, tabId: req.tabId, pageSize: req.pageSize }),
+      () => session.runQuery(req.sql, { qid: req.qid, tabId: req.tabId, pageSize: req.pageSize, params: req.params }),
       (r) => ({ elapsedMs: r.elapsedMs, rowCount: r.rowCount }),
     );
     return c.json<QueryStarted>(started);
@@ -104,7 +104,7 @@ export function registerQueryRoutes(api: Hono, deps: ServerDeps): void {
       connection.id,
       req.sql,
       'explain',
-      () => session.explain(req.sql, { qid: req.qid, tabId: req.tabId }),
+      () => session.explain(req.sql, { qid: req.qid, tabId: req.tabId, params: req.params }),
       (_r, wallMs) => ({ elapsedMs: wallMs, rowCount: null }),
     );
     return c.json<ExplainResult>(result);

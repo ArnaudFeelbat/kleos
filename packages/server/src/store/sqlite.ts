@@ -11,14 +11,17 @@ import {
   type LayoutPositions,
   type NewHistoryEntry,
   type SavedConnection,
-  type SavedQuery,
+  SavedQuery,
   type SavedQueryInput,
+  type Snippet,
   SshConfig,
   type SslMode,
   WindowState,
   emptyWindowState,
+  kleosErrorCodes,
 } from '@kleos/shared';
 import { KleosError } from '../errors';
+import { historyMatchExpression } from './history-search';
 import { migrations } from './migrations';
 import type { AppStore } from './types';
 
@@ -60,6 +63,15 @@ type SavedQueryRow = {
   name: string;
   sql: string;
   chart: string | null;
+  param_values: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type SnippetRow = {
+  id: string;
+  name: string;
+  body: string;
   created_at: string;
   updated_at: string;
 };
@@ -133,12 +145,29 @@ function toSavedQuery(row: SavedQueryRow): SavedQuery {
     name: row.name,
     sql: row.sql,
     chart: chart?.success ? chart.data : null,
-    // 0.7 groundwork placeholder: stored by the 0.7 migration (agent S7).
-    paramValues: null,
+    paramValues: parseJson(row.param_values, SavedQuery.shape.paramValues) ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
 }
+
+function toSnippet(row: SnippetRow): Snippet {
+  return { id: row.id, name: row.name, body: row.body, createdAt: row.created_at, updatedAt: row.updated_at };
+}
+
+/** Snippet names compare with full Unicode case folding (SQLite's NOCASE folds ASCII only). */
+function snippetNameKey(name: string): string {
+  return name.normalize('NFC').toLowerCase();
+}
+
+/** The outcome filter of a history search, as SQL on the history table. */
+const outcomeWhere = {
+  ok: 'error IS NULL AND cancelled = 0',
+  // Exclusive outcomes, as the side panel offers them: a cancelled run carries its 57014 error
+  // text but counts as cancelled, not failed.
+  error: 'error IS NOT NULL AND cancelled = 0',
+  cancelled: 'cancelled = 1',
+} as const;
 
 /** Applies every migration newer than schema_version, each in its own transaction. */
 export function migrate(db: Database.Database): void {
@@ -172,6 +201,26 @@ export function createSqliteStore(path: string): AppStore {
     const row = db.prepare('SELECT * FROM saved_queries WHERE id = ?').get(id) as SavedQueryRow | undefined;
     if (!row) throw KleosError.notFound('Saved query not found');
     return toSavedQuery(row);
+  };
+
+  const requireSnippet = (id: string): Snippet => {
+    const row = db.prepare('SELECT * FROM snippets WHERE id = ?').get(id) as SnippetRow | undefined;
+    if (!row) throw KleosError.notFound('Snippet not found');
+    return toSnippet(row);
+  };
+
+  /** 409 when another snippet already has this name, whatever its case. */
+  const refuseTakenSnippetName = (name: string, exceptId: string | null): void => {
+    const key = snippetNameKey(name);
+    const rows = db.prepare('SELECT id, name FROM snippets').all() as Pick<SnippetRow, 'id' | 'name'>[];
+    const taken = rows.find((row) => row.id !== exceptId && snippetNameKey(row.name) === key);
+    if (taken) {
+      throw new KleosError(409, {
+        code: kleosErrorCodes.validation,
+        message: `A snippet named "${taken.name}" already exists`,
+        hint: 'Choose another name, or edit that snippet instead.',
+      });
+    }
   };
 
   return {
@@ -316,6 +365,27 @@ export function createSqliteStore(path: string): AppStore {
       })();
       return toHistory(db.prepare('SELECT * FROM history WHERE id = ?').get(id) as HistoryRow);
     },
+    searchHistory({ q, connectionId, outcome, limit }) {
+      const where: string[] = [];
+      const params: unknown[] = [];
+      const match = historyMatchExpression(q);
+      if (match) {
+        where.push('seq IN (SELECT rowid FROM history_fts WHERE history_fts MATCH ?)');
+        params.push(match);
+      }
+      if (connectionId) {
+        where.push('connection_id = ?');
+        params.push(connectionId);
+      }
+      if (outcome) where.push(outcomeWhere[outcome]);
+      const rows = db
+        .prepare(
+          `SELECT * FROM history ${where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''}
+           ORDER BY ran_at DESC, seq DESC LIMIT ?`,
+        )
+        .all(...params, Math.min(Math.max(limit, 1), HISTORY_LIMIT)) as HistoryRow[];
+      return rows.map(toHistory);
+    },
 
     listSavedQueries(connectionId) {
       const rows = (
@@ -336,19 +406,78 @@ export function createSqliteStore(path: string): AppStore {
       const id = randomUUID();
       const t = now();
       db.prepare(
-        `INSERT INTO saved_queries (id, connection_id, name, sql, chart, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      ).run(id, input.connectionId, input.name, input.sql, input.chart ? JSON.stringify(input.chart) : null, t, t);
+        `INSERT INTO saved_queries (id, connection_id, name, sql, chart, param_values, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
+        id,
+        input.connectionId,
+        input.name,
+        input.sql,
+        input.chart ? JSON.stringify(input.chart) : null,
+        input.paramValues ? JSON.stringify(input.paramValues) : null,
+        t,
+        t,
+      );
       return requireSavedQuery(id);
     },
     updateSavedQuery(id, input) {
       requireSavedQuery(id);
+      // paramValues absent keeps what is stored, so a client that knows nothing of parameters
+      // (a rename, a chart change) never wipes them; null clears them.
       db.prepare(
-        `UPDATE saved_queries SET connection_id = ?, name = ?, sql = ?, chart = ?, updated_at = ? WHERE id = ?`,
-      ).run(input.connectionId, input.name, input.sql, input.chart ? JSON.stringify(input.chart) : null, now(), id);
+        `UPDATE saved_queries SET connection_id = @connectionId, name = @name, sql = @sql, chart = @chart,
+           param_values = CASE WHEN @keepParams = 1 THEN param_values ELSE @paramValues END, updated_at = @t
+         WHERE id = @id`,
+      ).run({
+        id,
+        connectionId: input.connectionId,
+        name: input.name,
+        sql: input.sql,
+        chart: input.chart ? JSON.stringify(input.chart) : null,
+        keepParams: input.paramValues === undefined ? 1 : 0,
+        paramValues: input.paramValues ? JSON.stringify(input.paramValues) : null,
+        t: now(),
+      });
       return requireSavedQuery(id);
     },
     deleteSavedQuery(id) {
       db.prepare('DELETE FROM saved_queries WHERE id = ?').run(id);
+    },
+
+    listSnippets() {
+      const rows = db.prepare('SELECT * FROM snippets ORDER BY name COLLATE NOCASE, name').all() as SnippetRow[];
+      return rows.map(toSnippet);
+    },
+    createSnippet(input) {
+      const id = randomUUID();
+      const t = now();
+      db.transaction(() => {
+        refuseTakenSnippetName(input.name, null);
+        db.prepare('INSERT INTO snippets (id, name, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run(
+          id,
+          input.name,
+          input.body,
+          t,
+          t,
+        );
+      })();
+      return requireSnippet(id);
+    },
+    updateSnippet(id, input) {
+      db.transaction(() => {
+        requireSnippet(id);
+        refuseTakenSnippetName(input.name, id);
+        db.prepare('UPDATE snippets SET name = ?, body = ?, updated_at = ? WHERE id = ?').run(
+          input.name,
+          input.body,
+          now(),
+          id,
+        );
+      })();
+      return requireSnippet(id);
+    },
+    deleteSnippet(id) {
+      db.prepare('DELETE FROM snippets WHERE id = ?').run(id);
     },
 
     close() {

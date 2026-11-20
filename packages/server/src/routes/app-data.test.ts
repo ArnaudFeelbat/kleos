@@ -108,6 +108,55 @@ describe('history routes', () => {
     expect((await call('POST', `/history/${c.id}`, { sql: 'select 1' })).status).toBe(400);
     expect((await call('POST', '/history/nope', entry('select 1', '2026-11-18T10:00:00.000Z'))).status).toBe(404);
   });
+
+  it('searches across servers with ?q, ?connectionId, ?outcome and ?limit', async () => {
+    const { call, createConnection } = setup();
+    const a = await createConnection({ nickname: 'A' });
+    const b = await createConnection({ nickname: 'B' });
+    await call('POST', `/history/${a.id}`, entry('select * from orders', '2026-11-18T10:00:00.000Z'));
+    await call('POST', `/history/${b.id}`, {
+      ...entry('select o.stauts from orders o', '2026-11-18T11:00:00.000Z'),
+      error: '42703 column o.stauts does not exist',
+    });
+    await call('POST', `/history/${b.id}`, {
+      ...entry('select pg_sleep(60)', '2026-11-18T12:00:00.000Z'),
+      error: '57014 canceling statement due to user request',
+      cancelled: true,
+    });
+    const search = async (qs: string) => {
+      const res = await call('GET', `/history?${qs}`);
+      expect(res.status).toBe(200);
+      return (res.body as HistoryEntry[]).map((e) => e.sql);
+    };
+
+    expect(await search('')).toEqual(['select pg_sleep(60)', 'select o.stauts from orders o', 'select * from orders']);
+    expect(await search('q=ORD')).toEqual(['select o.stauts from orders o', 'select * from orders']);
+    expect(await search(`q=${encodeURIComponent('o.stauts "does')}`)).toEqual(['select o.stauts from orders o']);
+    expect(await search(`q=orders&connectionId=${a.id}`)).toEqual(['select * from orders']);
+    expect(await search('outcome=ok')).toEqual(['select * from orders']);
+    expect(await search('outcome=error')).toEqual(['select o.stauts from orders o']);
+    expect(await search('outcome=cancelled')).toEqual(['select pg_sleep(60)']);
+    expect(await search('limit=1')).toEqual(['select pg_sleep(60)']);
+    // Empty values are "no filter", as the web client may send them.
+    expect(await search('q=&connectionId=')).toHaveLength(3);
+    // The per-favorite list is still its own route.
+    expect(((await call('GET', `/history/${a.id}`)).body as HistoryEntry[]).map((e) => e.sql)).toEqual([
+      'select * from orders',
+    ]);
+
+    // Deleting a favorite takes its runs out of the search.
+    expect((await call('DELETE', `/connections/${b.id}`)).status).toBe(204);
+    expect(await search('q=select')).toEqual(['select * from orders']);
+  });
+
+  it('validates the search', async () => {
+    const { call } = setup();
+    expect((await call('GET', '/history?outcome=failed')).status).toBe(400);
+    expect((await call('GET', '/history?limit=0')).status).toBe(400);
+    expect((await call('GET', '/history?limit=1001')).status).toBe(400);
+    expect((await call('GET', `/history?q=${'x'.repeat(501)}`)).status).toBe(400);
+    expect((await call('GET', '/history?limit=1000')).status).toBe(200);
+  });
 });
 
 describe('saved query routes', () => {
@@ -162,5 +211,38 @@ describe('saved query routes', () => {
     expect(
       (await call('PUT', '/saved-queries/nope', { connectionId: c.id, name: 'x', sql: '', chart: null })).status,
     ).toBe(404);
+  });
+
+  it('remembers parameter values: absent keeps them, null clears them, an object replaces them', async () => {
+    const { call, createConnection } = setup();
+    const c = await createConnection();
+    const input: SavedQueryInput = {
+      connectionId: c.id,
+      name: 'Orders of a customer',
+      sql: 'select * from orders where customer_id = :customer and status = $2',
+      chart: null,
+    };
+    const created = (await call('POST', '/saved-queries', input)).body as SavedQuery;
+    expect(created.paramValues).toBeNull();
+
+    const put = async (body: unknown) => {
+      const res = await call('PUT', `/saved-queries/${created.id}`, body);
+      expect(res.status).toBe(200);
+      return (res.body as SavedQuery).paramValues;
+    };
+    expect(await put({ ...input, paramValues: { ':customer': '42', $2: null } })).toEqual({
+      ':customer': '42',
+      $2: null,
+    });
+    expect(await put({ ...input, name: 'Renamed' })).toEqual({ ':customer': '42', $2: null });
+    const [listed] = (await call('GET', `/saved-queries?connectionId=${c.id}`)).body as SavedQuery[];
+    expect(listed).toMatchObject({ name: 'Renamed', paramValues: { ':customer': '42', $2: null } });
+    expect(await put({ ...input, paramValues: { ':customer': '7' } })).toEqual({ ':customer': '7' });
+    expect(await put({ ...input, paramValues: null })).toBeNull();
+
+    const withValues = await call('POST', '/saved-queries', { ...input, name: 'Again', paramValues: { $1: 'x' } });
+    expect((withValues.body as SavedQuery).paramValues).toEqual({ $1: 'x' });
+    expect((await call('POST', '/saved-queries', { ...input, paramValues: { $1: 5 } })).status).toBe(400);
+    expect((await call('PUT', `/saved-queries/${created.id}`, { ...input, paramValues: ['x'] })).status).toBe(400);
   });
 });

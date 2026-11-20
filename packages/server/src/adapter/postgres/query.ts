@@ -79,7 +79,7 @@ export class QueryManager {
     private readonly readOnly: boolean,
   ) {}
 
-  async runQuery(sql: string, { qid, tabId, pageSize }: QueryOptions): Promise<QueryStarted> {
+  async runQuery(sql: string, { qid, tabId, pageSize, params }: QueryOptions): Promise<QueryStarted> {
     const started = performance.now();
     const previous = this.runs.get(qid);
     const run: CursorRun = {
@@ -116,7 +116,9 @@ export class QueryManager {
         if (run.cancelRequested) throw queryCanceledError();
       }
 
-      const cursor = new Cursor<CellValue[]>(sql, undefined, { rowMode: 'array', types: textTypes });
+      // Bind values travel in the Bind message, untyped, so Postgres infers each $n's type from
+      // the statement; a count that does not match is Postgres's own 08P01 error.
+      const cursor = new Cursor<CellValue[]>(sql, bindValues(params), { rowMode: 'array', types: textTypes });
       captureCommandTag(cursor, run);
       run.cursor = tab.client.query(cursor);
       const page = await this.page(run, pageSize);
@@ -249,7 +251,7 @@ export class QueryManager {
    * never sticks (BEGIN READ ONLY on a read-only session, so a write fails). Cancellable by qid
    * like a query.
    */
-  async explain(sql: string, { qid, tabId }: { qid: string; tabId: string }): Promise<ExplainResult> {
+  async explain(sql: string, { qid, tabId, params }: Omit<QueryOptions, 'pageSize'>): Promise<ExplainResult> {
     const previous = this.runs.get(qid);
     const run: ExplainRun = { kind: 'explain', qid, tabId, pid: null, cancelRequested: false, executing: false };
     // Registered before anything is awaited, so a cancel can find it at any point.
@@ -264,7 +266,7 @@ export class QueryManager {
       await client.query(this.readOnly ? 'begin transaction read only' : 'begin');
       try {
         run.executing = true;
-        const result = await dataQuery(client, `explain (analyze, format json) ${sql}`);
+        const result = await dataQuery(client, `explain (analyze, format json) ${sql}`, bindValues(params));
         const output = JSON.parse(result.rows[0]?.[0] ?? '[]') as Array<{
           Plan: PlanNode;
           'Planning Time'?: number;
@@ -385,6 +387,14 @@ export class QueryManager {
     run.chain = next.catch(() => undefined);
     return next;
   }
+}
+
+/**
+ * The bind values of a run: a fresh array so the caller's cannot change under the driver.
+ * Strings go out as text and null as SQL NULL (pg's prepareValue leaves both as they are).
+ */
+function bindValues(params: QueryOptions['params']): (string | null)[] | undefined {
+  return params && params.length > 0 ? [...params] : undefined;
 }
 
 /** cursor.read with the result metadata (fields, rowCount), guarding pg-cursor's double callback after an error. */

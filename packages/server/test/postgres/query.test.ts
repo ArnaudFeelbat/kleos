@@ -231,6 +231,110 @@ describe('explain', () => {
   });
 });
 
+describe('bind parameters (0.7)', () => {
+  const opts = (qid: string, params: (string | null)[] | undefined, pageSize = 100) => ({
+    qid,
+    tabId: 'params',
+    pageSize,
+    params,
+  });
+
+  it('lets Postgres infer each type from where the value is used', async () => {
+    // $1 against an int column, then a bigint and a text column.
+    const byId = await session.runQuery('select id, note from shop.orders where id = $1', opts('p-int', ['3']));
+    expect(byId.rows).toEqual([['3', '']]);
+    const byBoth = await session.runQuery(
+      'select name from shop.customers where id = $1 or email = $2 order by id',
+      opts('p-two', ['1', 'grace@example.com']),
+    );
+    expect(byBoth.rows).toEqual([['Ada'], ['Grace']]);
+    // The same placeholder used twice is one value.
+    const twice = await session.runQuery('select $1::int + $1::int as doubled', opts('p-twice', ['21']));
+    expect(twice.rows).toEqual([['42']]);
+  });
+
+  it('sends null as SQL NULL', async () => {
+    const result = await session.runQuery(
+      'select id from shop.orders where customer_id = $1 and note is not distinct from $2',
+      opts('p-null', ['1', null]),
+    );
+    expect(result.rows).toEqual([['2']]);
+    const isNull = await session.runQuery('select $1::text is null, $2::text is null', opts('p-null2', [null, '']));
+    expect(isNull.rows).toEqual([['t', 'f']]);
+  });
+
+  it('treats a value as data, never as SQL', async () => {
+    const evil = `'; drop table shop.customers; --`;
+    const echoed = await session.runQuery('select $1::text as v', opts('p-evil1', [evil]));
+    expect(echoed.rows).toEqual([[evil]]);
+    const matched = await session.runQuery(
+      'select count(*) from shop.customers where name = $1',
+      opts('p-evil2', [evil]),
+    );
+    expect(matched.rows).toEqual([['0']]);
+    expect((await db.sql('select count(*)::int as n from shop.customers')).rows[0].n).toBe(3);
+  });
+
+  it('pages a cursor opened with parameters and runs commands with them', async () => {
+    const first = await session.runQuery('select g from generate_series(1, $1::int) g', opts('p-page', ['25'], 10));
+    expect(first.rows).toHaveLength(10);
+    expect(first.hasMore).toBe(true);
+    expect((await session.nextPage('p-page', 10)).rows[0]).toEqual(['11']);
+    const last = await session.nextPage('p-page', 10);
+    expect(last).toMatchObject({ rows: [['21'], ['22'], ['23'], ['24'], ['25']], hasMore: false });
+
+    await session.runQuery('create temp table bound (id int, label text)', opts('p-c1', undefined));
+    const inserted = await session.runQuery('insert into bound values ($1, $2)', opts('p-c2', ['7', null]));
+    expect(inserted).toMatchObject({ command: 'INSERT 0 1', rowCount: 1 });
+    const read = await session.runQuery('select id, label from bound', opts('p-c3', []));
+    expect(read.rows).toEqual([['7', null]]);
+  });
+
+  it("returns Postgres's own error for missing, extra or ill-typed values, and the tab keeps working", async () => {
+    const tooFew = await rejectionOf(session.runQuery('select $1::int + $2::int', opts('p-few', ['1'])));
+    expect(isPgError(tooFew)).toBe(true);
+    expect(tooFew.code).toBe('08P01');
+    expect(tooFew.message).toMatch(/bind message supplies 1 parameters, but prepared statement "" requires 2/);
+
+    // Statements always go over the extended protocol, so no values at all is the same 08P01.
+    const none = await rejectionOf(session.runQuery('select $1::int', opts('p-none', undefined)));
+    expect(none.code).toBe('08P01');
+    // A placeholder whose type nothing tells is text.
+    expect((await session.runQuery('select $1 as v', opts('p-untyped', ['1']))).columns[0]?.typeName).toBe('text');
+
+    const extra = await rejectionOf(session.runQuery('select 1', opts('p-extra', ['1'])));
+    expect(extra.code).toBe('08P01');
+
+    const typed = await rejectionOf(session.runQuery('select * from shop.orders where id = $1', opts('p-type', ['x'])));
+    expect(typed.code).toBe('22P02');
+
+    const after = await session.runQuery('select $1::text', opts('p-after', ['ok']));
+    expect(after.rows).toEqual([['ok']]);
+  });
+
+  it('explains with the same values, and still rolls back writes', async () => {
+    const result = await session.explain('select * from shop.orders where id = $1', {
+      qid: 'p-ex1',
+      tabId: 'params',
+      params: ['2'],
+    });
+    expect(result.plan['Actual Rows']).toBe(1);
+
+    await session.explain('insert into shop.audit_log (message) values ($1)', {
+      qid: 'p-ex2',
+      tabId: 'params',
+      params: ['explained with params'],
+    });
+    const count = await db.sql(`select count(*)::int as n from shop.audit_log where message = 'explained with params'`);
+    expect(count.rows[0].n).toBe(0);
+
+    const tooFew = await rejectionOf(
+      session.explain('select $1::int + $2::int', { qid: 'p-ex3', tabId: 'params', params: ['1'] }),
+    );
+    expect(tooFew.code).toBe('08P01');
+  });
+});
+
 describe('closeTab', () => {
   it('releases the tab client', async () => {
     const before = await kleosBackends(db);
