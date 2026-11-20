@@ -52,6 +52,11 @@ const where = (ssh: SshConfig) => `${ssh.host}:${ssh.port}`;
 
 /** How long explain() waits for ssh2 to report a lost connection after a driver error. */
 const LOSS_GRACE_MS = 1000;
+/**
+ * If ssh2 still hasn't reported anything, explain() opens a test channel: a live SSH connection
+ * answers in milliseconds, a dead one never does (or errors at once).
+ */
+const PROBE_TIMEOUT_MS = 3000;
 
 /** ssh2's errors, as the person setting up the favorite needs to read them. */
 function sshFailure(err: Error & { level?: string; code?: unknown }, ssh: SshConfig): KleosError {
@@ -184,7 +189,33 @@ export async function openTunnel(options: TunnelOptions): Promise<SshTunnel> {
     signalLost();
   };
   client.on('error', onLost);
+  client.on('end', () => onLost());
   client.on('close', () => onLost());
+
+  /** True when the SSH connection still opens a channel to the database within the timeout. */
+  const probe = () =>
+    new Promise<boolean>((resolve) => {
+      const timer = setTimeout(() => resolve(false), PROBE_TIMEOUT_MS);
+      const done = (alive: boolean) => {
+        clearTimeout(timer);
+        resolve(alive);
+      };
+      try {
+        client.forwardOut('127.0.0.1', 0, target.host, target.port, (err, channel: ClientChannel) => {
+          if (err) {
+            // ssh2 fails pending channels with this when the connection dies under them;
+            // any other refusal came from the SSH host, so the connection itself is alive.
+            done(err.message !== 'No response from server');
+            return;
+          }
+          channel.on('error', () => undefined);
+          channel.close();
+          done(true);
+        });
+      } catch {
+        done(false);
+      }
+    });
 
   let localPort: number;
   try {
@@ -206,6 +237,9 @@ export async function openTunnel(options: TunnelOptions): Promise<SshTunnel> {
         let timer: NodeJS.Timeout | undefined;
         await Promise.race([lostSignal, new Promise((resolve) => (timer = setTimeout(resolve, LOSS_GRACE_MS)))]);
         clearTimeout(timer);
+        // ssh2 may report a dead connection late (or, behind some proxies, only on the next
+        // write): ask it directly before passing the driver's raw error on.
+        if (!lost && !closing && !(await probe())) onLost(new Error('The SSH connection stopped answering'));
       }
       if (lost) return lost;
       if (forwardError) {

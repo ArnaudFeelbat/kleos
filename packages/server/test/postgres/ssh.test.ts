@@ -256,11 +256,17 @@ describe('SSH authentication', () => {
     expect(wrong.body.code).toBe('KLEOS_SSH');
     expect(wrong.message).toMatch(/passphrase .* is wrong/);
 
-    const ok = await adapter.test(
-      tunneled({ keyPath: encryptedKey.path }),
-      db.password,
-      options({ sshPassphrase: PASSPHRASE, trustSshFingerprint: fingerprint }),
-    );
+    // Failed once under load, never alone: keep the server's own error if it does again.
+    const ok = await adapter
+      .test(
+        tunneled({ keyPath: encryptedKey.path }),
+        db.password,
+        options({ sshPassphrase: PASSPHRASE, trustSshFingerprint: fingerprint }),
+      )
+      .catch((err: unknown) => {
+        const body = (err as { body?: unknown }).body ?? String(err);
+        throw new Error(`unexpected failure: ${JSON.stringify(body)}`);
+      });
     expect(ok.version).toMatch(/^PostgreSQL/);
   });
 
