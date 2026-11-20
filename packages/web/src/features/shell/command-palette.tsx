@@ -2,16 +2,19 @@ import { useQueries, useQuery } from '@tanstack/react-query';
 import {
   Activity,
   Bookmark,
+  Braces,
   ChartLine,
   Check,
   CircleArrowDown,
   Code,
   Database,
   Eye,
+  History,
   LayoutGrid,
   Monitor,
   Moon,
   Network,
+  Play,
   Plug,
   RefreshCw,
   Settings,
@@ -20,7 +23,7 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   CommandDialog,
   CommandEmpty,
@@ -32,11 +35,13 @@ import {
 } from '@/components/ui/command';
 import { connectionColorSwatch } from '@/features/connections/colors';
 import { useConnectActions } from '@/features/connections/connect-context';
+import { requestHistorySearch } from '@/features/history/search-request';
 import { api, queryKeys } from '@/lib/api';
 import type { Appearance } from '@/lib/bridge';
 import {
   buildPaletteEntries,
-  paletteScore,
+  paletteFilter,
+  paletteKeywords,
   type PaletteEntry,
   type PaletteGroup,
   type PaletteIcon,
@@ -54,6 +59,9 @@ const icons: Record<PaletteIcon, LucideIcon> = {
   view: Eye,
   saved: Bookmark,
   'saved-chart': ChartLine,
+  run: Play,
+  snippet: Braces,
+  history: History,
   schema: Network,
   data: Table2,
   query: Code,
@@ -72,6 +80,7 @@ const groupTitles: Record<PaletteGroup, string> = {
   servers: 'Open servers',
   connections: 'Connect',
   saved: 'Saved queries',
+  snippets: 'Snippets',
   tables: 'Tables & views',
   actions: 'Actions',
 };
@@ -89,15 +98,17 @@ type Props = {
 };
 
 /**
- * ⌘K: jump to any open server, connect a favorite, open any table or view of any open
- * server, switch workspace tab, refresh the schema, close the tab, change appearance, open
- * Settings or check for updates.
+ * ⌘K: jump to any open server, connect a favorite, run or open a saved query, insert a snippet,
+ * open any table or view of any open server, switch workspace tab, refresh the schema, search
+ * the history, close the tab, change appearance, open Settings or check for updates.
  */
 export function CommandPalette({ open, onOpenChange, onCloseTab, onCheckForUpdates }: Props) {
   const { tabs, active } = useTabs();
   const { connect } = useConnectActions();
   const [search, setSearch] = useState('');
   const [appearance, setAppearance] = useState<Appearance | null>(null);
+  /** Set by an entry that moves focus itself (Search history…): closing must not restore it. */
+  const keepFocus = useRef(false);
 
   const favorites = useQuery({ queryKey: queryKeys.connections, queryFn: api.listConnections, enabled: open });
   // Already cached by each workspace; staleTime keeps the palette from re-introspecting.
@@ -119,6 +130,9 @@ export function CommandPalette({ open, onOpenChange, onCloseTab, onCheckForUpdat
       enabled: open && !t.restore,
     })),
   });
+
+  // Shared by every server; only offered with a server in front.
+  const snippets = useQuery({ queryKey: queryKeys.snippets, queryFn: () => api.snippets(), enabled: open });
 
   useEffect(() => {
     if (!open) return;
@@ -142,16 +156,17 @@ export function CommandPalette({ open, onOpenChange, onCloseTab, onCheckForUpdat
         favorites: favorites.data ?? [],
         schemas: Object.fromEntries(tabs.map((t, i) => [t.sid, schemas[i]?.data])),
         saved: Object.fromEntries(tabs.map((t, i) => [t.sid, savedQueries[i]?.data])),
+        snippets: snippets.data,
         appearance,
         colorOf: (color) => (color === 'none' ? undefined : connectionColorSwatch[color]),
         mod,
       }),
-    [tabs, active, favorites.data, schemas, savedQueries, appearance],
+    [tabs, active, favorites.data, schemas, savedQueries, snippets.data, appearance],
   );
 
-  // Tables only once something is typed: an empty palette stays a short list.
-  const visible = search.trim() ? entries : entries.filter((e) => e.group !== 'tables');
-  const groups = (['servers', 'connections', 'saved', 'tables', 'actions'] as const)
+  // Tables, snippets and "Run saved query" only once something is typed: an empty palette stays a short list.
+  const visible = search.trim() ? entries : entries.filter((e) => !e.searchOnly);
+  const groups = (['servers', 'connections', 'saved', 'snippets', 'tables', 'actions'] as const)
     .map((group) => ({ group, items: visible.filter((e) => e.group === group) }))
     .filter((g) => g.items.length > 0);
 
@@ -180,6 +195,21 @@ export function CommandPalette({ open, onOpenChange, onCloseTab, onCheckForUpdat
       case 'open-saved':
         tabsStore.activate(r.sid);
         requestWorkspace(r.sid, { kind: 'open-saved', query: r.query });
+        break;
+      case 'run-saved':
+        tabsStore.activate(r.sid);
+        requestWorkspace(r.sid, { kind: 'run-saved', query: r.query });
+        break;
+      case 'insert-sql':
+        tabsStore.activate(r.sid);
+        requestWorkspace(r.sid, { kind: 'insert-sql', text: r.text });
+        break;
+      case 'search-history':
+        // The Query tab's side panel takes the request and focuses its search field.
+        keepFocus.current = true;
+        tabsStore.activate(r.sid);
+        requestWorkspace(r.sid, { kind: 'tab', tab: 'query' });
+        requestHistorySearch(r.sid);
         break;
       case 'tab':
         tabsStore.activate(r.sid);
@@ -216,12 +246,17 @@ export function CommandPalette({ open, onOpenChange, onCloseTab, onCheckForUpdat
       onOpenChange={(next) => (next ? onOpenChange(true) : close())}
       title="Command palette"
       description="Jump to a server, a table or an action"
-      filter={paletteScore}
+      filter={paletteFilter}
+      onCloseAutoFocus={(e) => {
+        if (!keepFocus.current) return;
+        keepFocus.current = false;
+        e.preventDefault();
+      }}
     >
       <CommandInput
         value={search}
         onValueChange={setSearch}
-        placeholder="Search servers, tables, saved queries and actions…"
+        placeholder="Search servers, tables, queries, snippets and actions…"
       />
       <CommandList>
         <CommandEmpty>Nothing matches “{search}”.</CommandEmpty>
@@ -233,7 +268,7 @@ export function CommandPalette({ open, onOpenChange, onCloseTab, onCheckForUpdat
                 <CommandItem
                   key={entry.id}
                   value={entry.id}
-                  keywords={[entry.label, entry.detail ?? '', ...entry.keywords]}
+                  keywords={paletteKeywords(entry)}
                   onSelect={() => run(entry)}
                 >
                   {entry.dot ? (

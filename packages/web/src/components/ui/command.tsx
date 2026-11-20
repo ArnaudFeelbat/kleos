@@ -35,6 +35,7 @@ function CommandDialog({
   className,
   showCloseButton = false,
   filter,
+  onCloseAutoFocus,
   ...props
 }: React.ComponentProps<typeof Dialog> & {
   title?: string
@@ -43,6 +44,8 @@ function CommandDialog({
   showCloseButton?: boolean
   /** cmdk ranking function; defaults to cmdk's fuzzy score. */
   filter?: React.ComponentProps<typeof CommandPrimitive>["filter"]
+  /** preventDefault() keeps focus where an action put it instead of restoring it on close. */
+  onCloseAutoFocus?: React.ComponentProps<typeof DialogContent>["onCloseAutoFocus"]
 }) {
   return (
     <Dialog {...props}>
@@ -56,6 +59,7 @@ function CommandDialog({
           className
         )}
         showCloseButton={showCloseButton}
+        onCloseAutoFocus={onCloseAutoFocus}
       >
         {/* cmdk names its input through `label` (aria-labelledby wins over aria-label). */}
         <Command label={title} filter={filter} className="[&_[cmdk-item]_svg]:size-4">

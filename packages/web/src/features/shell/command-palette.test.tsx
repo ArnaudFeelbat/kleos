@@ -4,8 +4,9 @@ import { QueryClient } from '@tanstack/react-query';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { SchemaModel } from '@kleos/shared';
+import type { SavedQuery, SchemaModel, Snippet } from '@kleos/shared';
 import { ConnectProvider } from '@/features/connections/connect-context';
+import { resetHistorySearchRequests, useHistorySearchRequest } from '@/features/history/search-request';
 import { Providers, savedConnection, sessionInfo } from '@/features/workspace/test-workspace';
 import type * as ApiModule from '@/lib/api';
 import { api, queryKeys } from '@/lib/api';
@@ -18,7 +19,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof ApiModule>();
   return {
     ...actual,
-    api: { listConnections: vi.fn(), schema: vi.fn(), openSession: vi.fn(), savedQueries: vi.fn() },
+    api: { listConnections: vi.fn(), schema: vi.fn(), openSession: vi.fn(), savedQueries: vi.fn(), snippets: vi.fn() },
   };
 });
 
@@ -60,8 +61,26 @@ const model = {
 
 function IntentProbe() {
   const intent = useWorkspaceIntent('s1');
-  return <p data-testid="intent">{intent ? JSON.stringify(intent.intent) : 'none'}</p>;
+  const historySearch = useHistorySearchRequest('s1');
+  return (
+    <>
+      <p data-testid="intent">{intent ? JSON.stringify(intent.intent) : 'none'}</p>
+      <p data-testid="history-search">{historySearch === undefined ? 'none' : 'pending'}</p>
+    </>
+  );
 }
+
+const monthly: SavedQuery = {
+  id: 'q1',
+  connectionId: 'c1',
+  name: 'monthly revenue',
+  sql: 'select * from revenue where month = $1 and region = :region',
+  chart: null,
+  paramValues: { $1: '2026-10', ':region': 'EU' },
+  createdAt: '',
+  updatedAt: '',
+};
+const locks: Snippet = { id: 'n1', name: 'Locks', body: 'select * from pg_locks', createdAt: '', updatedAt: '' };
 
 function renderPalette(onCloseTab = vi.fn()) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -80,6 +99,7 @@ function renderPalette(onCloseTab = vi.fn()) {
 
 beforeEach(() => {
   mocked.savedQueries.mockResolvedValue([]);
+  mocked.snippets.mockResolvedValue([]);
   window.kleos = bridge;
   mocked.listConnections.mockResolvedValue([
     savedConnection,
@@ -93,6 +113,7 @@ afterEach(() => {
   delete window.kleos;
   act(() => tabsStore.reset());
   resetWorkspaceIntents();
+  resetHistorySearchRequests();
 });
 
 describe('CommandPalette', { timeout: 15_000 }, () => {
@@ -114,6 +135,59 @@ describe('CommandPalette', { timeout: 15_000 }, () => {
     expect(screen.getByTestId('intent')).toHaveTextContent(
       JSON.stringify({ kind: 'open-table', ref: { schema: 'shop', name: 'orders' }, tab: 'data' }),
     );
+  });
+
+  it('runs a saved query from its name: ⌘K, the name, Enter', async () => {
+    mocked.savedQueries.mockResolvedValue([monthly]);
+    const { onOpenChange } = renderPalette();
+    // The empty palette lists saved queries to open, not to run.
+    expect(await screen.findByRole('option', { name: /^monthly revenue/ })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /Run saved query/ })).not.toBeInTheDocument();
+    await userEvent.type(screen.getByRole('combobox', { name: 'Command palette' }), 'monthly revenue');
+    const run = await screen.findByRole('option', { name: /^Run saved query: monthly revenue/ });
+    await waitFor(() => expect(run).toHaveAttribute('aria-selected', 'true'));
+    const options = screen.getAllByRole('option').map((o) => o.textContent);
+    expect(options.slice(0, 2)).toEqual(['Run saved query: monthly revenue', 'monthly revenue']);
+    await userEvent.keyboard('{Enter}');
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(tabsStore.get().active).toBe('s1');
+    expect(screen.getByTestId('intent')).toHaveTextContent(JSON.stringify({ kind: 'run-saved', query: monthly }));
+  });
+
+  it('still opens a saved query without running it, one ↓ away', async () => {
+    mocked.savedQueries.mockResolvedValue([monthly]);
+    renderPalette();
+    await userEvent.type(screen.getByRole('combobox', { name: 'Command palette' }), 'monthly');
+    await screen.findByRole('option', { name: /^Run saved query: monthly revenue/ });
+    await userEvent.keyboard('{ArrowDown}{Enter}');
+    expect(screen.getByTestId('intent')).toHaveTextContent(JSON.stringify({ kind: 'open-saved', query: monthly }));
+  });
+
+  it('inserts a snippet into the server in front', async () => {
+    mocked.snippets.mockResolvedValue([locks]);
+    act(() => tabsStore.activate('s1'));
+    renderPalette();
+    await screen.findByRole('option', { name: /^shop_dev/ });
+    expect(screen.queryByRole('option', { name: /Insert snippet/ })).not.toBeInTheDocument();
+    await userEvent.type(screen.getByRole('combobox', { name: 'Command palette' }), 'locks');
+    const insert = await screen.findByRole('option', { name: /^Insert snippet: Locks/ });
+    expect(insert).toHaveTextContent('select * from pg_locks');
+    await waitFor(() => expect(insert).toHaveAttribute('aria-selected', 'true'));
+    await userEvent.keyboard('{Enter}');
+    expect(screen.getByTestId('intent')).toHaveTextContent(
+      JSON.stringify({ kind: 'insert-sql', text: 'select * from pg_locks' }),
+    );
+  });
+
+  it('Search history… shows the Query tab and asks its side panel for the search field', async () => {
+    act(() => tabsStore.activate('s1'));
+    renderPalette();
+    await userEvent.type(screen.getByRole('combobox', { name: 'Command palette' }), 'search history');
+    const action = await screen.findByRole('option', { name: /^Search history…/ });
+    await waitFor(() => expect(action).toHaveAttribute('aria-selected', 'true'));
+    await userEvent.keyboard('{Enter}');
+    expect(screen.getByTestId('intent')).toHaveTextContent(JSON.stringify({ kind: 'tab', tab: 'query' }));
+    expect(screen.getByTestId('history-search')).toHaveTextContent('pending');
   });
 
   it('switches appearance and marks the current one', async () => {
