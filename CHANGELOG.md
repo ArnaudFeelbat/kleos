@@ -1,5 +1,17 @@
 # Nouveautés de Kleos
 
+## Version 0.6.1 — 20 novembre 2026
+
+### Une nouvelle icône
+
+- Kleos change de couleurs : son icône passe à un **ciel de coucher de soleil**, du violet
+  de la nuit au magenta, au corail puis à l'ambre, avec la base de données en blanc et sa
+  courbe en cyan néon. On la retrouve dans le Dock, le Finder, le Launchpad, la fenêtre
+  « À propos » et le DMG.
+- Rien d'autre ne change dans l'application.
+
+---
+
 ## Version 0.6.0 — 20 novembre 2026
 
 ### Modifier le schéma, sans risque
