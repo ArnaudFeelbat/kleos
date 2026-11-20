@@ -41,6 +41,8 @@ describe('SchemaTab', { timeout: 20_000 }, () => {
       'public.order_items',
       'public.orders',
       'public.products',
+      // External node: sales.invoices references public.orders.
+      'sales.invoices',
     ]);
   });
 
