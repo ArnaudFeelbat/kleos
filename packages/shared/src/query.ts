@@ -11,6 +11,11 @@ export const QueryRequest = z.object({
   /** Query tab id chosen by the frontend; each tab gets its own dedicated database client. */
   tabId: z.string().min(1),
   pageSize: z.number().int().min(1).max(5000).default(500),
+  /**
+   * Values for $1…$n, sent to Postgres as bind parameters (text, null for NULL) — never pasted
+   * into the SQL. The editor turns :name placeholders into $n before sending. (0.7)
+   */
+  params: z.array(z.string().nullable()).max(100).optional(),
 });
 export type QueryRequest = z.input<typeof QueryRequest>;
 
@@ -39,6 +44,8 @@ export const ExplainRequest = z.object({
   qid: z.string().min(1).max(100),
   sql: z.string().min(1),
   tabId: z.string().min(1),
+  /** As on QueryRequest. (0.7) */
+  params: z.array(z.string().nullable()).max(100).optional(),
 });
 export type ExplainRequest = z.infer<typeof ExplainRequest>;
 
@@ -89,6 +96,18 @@ export const HistoryEntry = z.object({
 export type HistoryEntry = z.infer<typeof HistoryEntry>;
 
 export const NewHistoryEntry = HistoryEntry.omit({ id: true, connectionId: true });
+
+/**
+ * GET /history?… (0.7): full-text search over past runs, across servers unless one is named.
+ * `q` matches words in the SQL and the error text (prefix matching, every word must match).
+ */
+export const HistorySearch = z.object({
+  q: z.string().max(500).optional(),
+  connectionId: z.string().optional(),
+  outcome: z.enum(['ok', 'error', 'cancelled']).optional(),
+  limit: z.coerce.number().int().min(1).max(1000).default(200),
+});
+export type HistorySearch = z.input<typeof HistorySearch>;
 export type NewHistoryEntry = z.infer<typeof NewHistoryEntry>;
 
 export const SavedQuery = z.object({
@@ -97,6 +116,11 @@ export const SavedQuery = z.object({
   name: z.string().min(1),
   sql: z.string(),
   chart: ChartSettings.nullable(),
+  /**
+   * The parameter values last used with this saved query, by placeholder ("$1", ":customer"),
+   * offered again the next time it runs. (0.7)
+   */
+  paramValues: z.record(z.string(), z.string().nullable()).nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -107,6 +131,8 @@ export const SavedQueryInput = z.object({
   name: z.string().trim().min(1).max(200),
   sql: z.string(),
   chart: ChartSettings.nullable(),
+  /** Absent keeps the stored values; null clears them. (0.7) */
+  paramValues: z.record(z.string(), z.string().nullable()).nullable().optional(),
 });
 export type SavedQueryInput = z.infer<typeof SavedQueryInput>;
 

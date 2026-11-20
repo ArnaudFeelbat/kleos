@@ -11,6 +11,7 @@ export * from './rows';
 export * from './schema';
 export * from './release';
 export * from './settings';
+export * from './snippets';
 export * from './settings-patch';
 export * from './sql';
 export * from './stats';

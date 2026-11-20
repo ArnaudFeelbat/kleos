@@ -19,6 +19,7 @@ import {
   SavedQuery,
   SchemaModel,
   SessionInfo,
+  Snippet,
   StatsResult,
   TestConnectionResult,
   WindowState,
@@ -36,6 +37,8 @@ import {
   type RowEdit,
   type RowsRequest,
   type SavedQueryInput,
+  type HistorySearch,
+  type SnippetInput,
   type StatsKind,
   type StatsResultOf,
   type TestConnectionRequest,
@@ -156,6 +159,18 @@ export const api = {
     request('PUT', `/saved-queries/${enc(id)}`, SavedQuery, input),
   deleteSavedQuery: (id: string) => request<void>('DELETE', `/saved-queries/${enc(id)}`, NoContent),
 
+  // 0.7 — history search across servers, snippets.
+  searchHistory: (search: HistorySearch) => {
+    const qs = new URLSearchParams();
+    for (const [key, value] of Object.entries(search))
+      if (value !== undefined && value !== '') qs.set(key, String(value));
+    return request('GET', `/history?${qs.toString()}`, z.array(HistoryEntry));
+  },
+  snippets: () => request('GET', '/snippets', z.array(Snippet)),
+  createSnippet: (input: SnippetInput) => request('POST', '/snippets', Snippet, input),
+  updateSnippet: (id: string, input: SnippetInput) => request('PUT', `/snippets/${enc(id)}`, Snippet, input),
+  deleteSnippet: (id: string) => request<void>('DELETE', `/snippets/${enc(id)}`, NoContent),
+
   // 0.4 — export/import jobs and the restored window.
   startExport: (sid: string, req: ExportRequest) => request('POST', `/sessions/${enc(sid)}/exports`, JobStatus, req),
   importPreview: (req: ImportPreviewRequest) => request('POST', '/imports/preview', ImportPreview, req),
@@ -182,6 +197,8 @@ export const queryKeys = {
     ['grid-layout', connectionId, schema, table] as const,
   history: (connectionId: string) => ['history', connectionId] as const,
   savedQueries: (connectionId: string) => ['saved-queries', connectionId] as const,
+  historySearch: (search: HistorySearch) => ['history-search', search] as const,
+  snippets: ['snippets'] as const,
   job: (jobId: string) => ['job', jobId] as const,
   windowState: ['window-state'] as const,
 };

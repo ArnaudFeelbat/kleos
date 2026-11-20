@@ -133,6 +133,8 @@ function toSavedQuery(row: SavedQueryRow): SavedQuery {
     name: row.name,
     sql: row.sql,
     chart: chart?.success ? chart.data : null,
+    // 0.7 groundwork placeholder: stored by the 0.7 migration (agent S7).
+    paramValues: null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
