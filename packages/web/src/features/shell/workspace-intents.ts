@@ -7,7 +7,14 @@ export type WorkspaceIntent =
   | { kind: 'open-table'; ref: TableRef; tab: 'data' | 'schema' }
   | { kind: 'tab'; tab: WorkspaceTab }
   | { kind: 'refresh-schema' }
-  | { kind: 'open-saved'; query: SavedQuery };
+  | { kind: 'open-saved'; query: SavedQuery }
+  /**
+   * Opens the saved query in a tab (as open-saved) and runs it at once; when it has parameters,
+   * the parameter prompt opens prefilled with its paramValues so Enter runs it. (0.7)
+   */
+  | { kind: 'run-saved'; query: SavedQuery }
+  /** Inserts text at the cursor of the query tab in front (switching to Query first). (0.7) */
+  | { kind: 'insert-sql'; text: string };
 
 export type PendingIntent = { intent: WorkspaceIntent; nonce: number };
 
