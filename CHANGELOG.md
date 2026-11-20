@@ -1,5 +1,41 @@
 # Nouveautés de Kleos
 
+## Version 0.7.0 — 20 novembre 2026
+
+### Des scripts, pas seulement des requêtes
+
+- **« Run all ».** Un bouton (ou ⇧⌘↵) exécute toutes les instructions de l'éditeur, dans
+  l'ordre. Chaque instruction a son propre résultat ; une liste permet de passer de l'une à
+  l'autre. À la première erreur, Kleos s'arrête et dit laquelle a échoué et à quelle ligne
+  (« Statement 15 of 20 failed · line 15 »), en soulignant l'endroit dans l'éditeur.
+- Une transaction ouverte par `BEGIN` dans le script vaut pour les instructions qui suivent.
+
+### Des paramètres
+
+- Écrivez `$1` ou `:client` dans une requête : avant l'exécution, Kleos demande la valeur de
+  chaque paramètre (« Parameters »), avec la possibilité de mettre NULL. Les valeurs sont
+  transmises à Postgres à part, jamais collées dans le SQL.
+- **Une requête enregistrée se souvient de ses paramètres.** Dans la palette ⌘K, tapez son
+  nom puis Entrée : la fenêtre des paramètres s'ouvre déjà remplie, Entrée encore, et c'est
+  parti (« Run saved query »).
+
+### Écrire plus vite
+
+- **Mettre en forme le SQL** : ⇧⌥F (ou le bouton « Format SQL ») range la sélection, ou tout
+  l'éditeur. Un simple ⌘Z revient en arrière.
+- **Des extraits réutilisables** : un nouvel onglet « Snippets », à côté de l'historique et
+  des requêtes enregistrées, garde vos morceaux de SQL fréquents. Un clic les insère à
+  l'endroit du curseur ; ils sont aussi dans la palette ⌘K (« Insert snippet »).
+
+### Retrouver une ancienne requête
+
+- **L'historique se cherche.** Tapez quelques mots dans « Search SQL and errors » : Kleos
+  retrouve les exécutions dont le SQL ou l'erreur les contient, avec les mots surlignés.
+  Filtrez par serveur (celui-ci ou tous) et par résultat (réussies, en erreur, annulées).
+- « Search history… » dans la palette ⌘K y mène directement.
+
+---
+
 ## Version 0.6.1 — 20 novembre 2026
 
 ### Une nouvelle icône

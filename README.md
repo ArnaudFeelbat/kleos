@@ -42,6 +42,10 @@ and watch your server live — one window, one tab per server.
   committed in one transaction — or none of it is.
 - **Exact values, always.** Every value travels as text with its type, so `bigint`,
   `numeric` and `timestamptz` are never rounded or shifted.
+- **Scripts, not just statements.** Run all runs every statement in order and stops at the
+  first error with its line; `$1` and `:name` placeholders prompt for values sent as bind
+  parameters; saved queries remember them, so ⌘K, a name and Enter rerun one. Format SQL with
+  ⇧⌥F, keep snippets, and search every past run across servers.
 - **Queries with charts and plans.** CodeMirror editor with schema autocomplete, paged
   results, line/bar/scatter charts, `EXPLAIN ANALYZE` as a tree, errors underlined where
   Postgres points.
@@ -89,6 +93,10 @@ and watch your server live — one window, one tab per server.
     <td><img src="docs/screenshots/new-table.jpg" alt="The New table dialog with columns, types, defaults and a primary key" /><br /><sub><b>New table</b> — columns, types, defaults, primary key.</sub></td>
     <td><img src="docs/screenshots/schema-changes.jpg" alt="Pending schema changes with the exact SQL that will run" /><br /><sub><b>Schema changes</b> — the exact SQL first, then one transaction.</sub></td>
   </tr>
+  <tr>
+    <td><img src="docs/screenshots/run-all.jpg" alt="Run all stopped at statement 15 of 20 with its line marked" /><br /><sub><b>Run all</b> — every statement in order, stopped at the first error.</sub></td>
+    <td><img src="docs/screenshots/parameters.jpg" alt="The parameters prompt for :id and :status" /><br /><sub><b>Parameters</b> — values sent as bind parameters, never pasted.</sub></td>
+  </tr>
 </table>
 
 ## Install
@@ -117,6 +125,8 @@ Requires macOS on Apple silicon and PostgreSQL 12 or later.
 | ⌘⇧] / ⌘⇧[     | Next / previous tab                                  |
 | ⌘⇧L           | Toggle light / dark                                  |
 | ⌘↵            | Run the selection, or the statement under the cursor |
+| ⇧⌘↵           | Run all: every statement, stop at the first error    |
+| ⇧⌥F           | Format SQL (the selection, or the whole editor)      |
 | ⌘E            | Explain                                              |
 | ⌘S            | Commit staged edits (Data) · Save the query (Query)  |
 | ⌥← / ⌥→       | Move the selected column                             |
@@ -194,7 +204,6 @@ artboards in [docs/design](docs/design).
 Kleos ships as a `.dmg` on GitHub Releases, never through the Mac App Store. The plan to 1.0,
 one theme per release — subject to change:
 
-- **0.7 · Query** — “Run all”, query parameters, formatter and snippets, searchable history
 - **0.8 · Insight** — plans explained in plain language, monitoring alerts and trends
 - **0.9 · Polish** — keyboard and VoiceOver audit, a French interface, performance budgets in CI
 - **1.0** — first-run guide, stability freeze, documentation, and the 1.0 DMG

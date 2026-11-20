@@ -520,6 +520,121 @@ try {
     await sleep(500);
     await win.shot('11-query-error');
   });
+  const editorText = `${visible('.cm-content')}[0]?.innerText ?? ''`;
+  const replaceEditor = async (sql) => {
+    await win.click(`${visible('.cm-content')}[0]`, 'editor');
+    await win.key('a', 'KeyA', 65, 4);
+    await win.type(sql);
+  };
+  const apiCall = (method, path, body) =>
+    win.evaluate(
+      `fetch(window.kleos.apiBase + '/api' + ${JSON.stringify(path)}, { method: ${JSON.stringify(method)}, headers: { authorization: 'Bearer ' + window.kleos.token, 'content-type': 'application/json' }, body: ${body ? JSON.stringify(JSON.stringify(body)) : 'undefined'} }).then((r) => r.json())`,
+    );
+  await step('Run all: a 20-statement migration stops at the failing line', async () => {
+    const lines = ['create table shop.tour_migration (id int primary key, label text);'];
+    for (let i = 1; i <= 18; i += 1) {
+      // Statement 15 inserts id 3 again: a duplicate key, on line 15 of the script.
+      const id = i === 14 ? 3 : i;
+      lines.push(`insert into shop.tour_migration values (${id}, 'row ${i}');`);
+    }
+    lines.push('select count(*) from shop.tour_migration;');
+    await replaceEditor(lines.join('\n'));
+    await win.click(`${visible('button')}.find((b) => b.textContent.trim().startsWith('Run all'))`, 'Run all');
+    await win.waitFor(`document.body.innerText.includes('23505')`, 'the duplicate key error', 30000);
+    await win.waitFor(
+      `/Statement 15 of 20/.test(document.body.innerText) && /line 15/.test(document.body.innerText)`,
+      'statement 15, line 15',
+    );
+    await sleep(600);
+    await win.shot('11a-run-all-stops');
+  });
+  await step('parameters prompt before running', async () => {
+    await replaceEditor('select id, status, total from shop.orders where id = :id and status = :status;');
+    await win.key('Enter', 'Enter', 13, 4);
+    await win.waitFor(
+      `document.querySelector('[role=dialog]')?.textContent.includes('Parameters')`,
+      'parameter dialog',
+    );
+    await win.click(`document.querySelectorAll('[role=dialog] input:not([type=checkbox])')[0]`, 'first value');
+    await win.type('1');
+    await win.click(`document.querySelectorAll('[role=dialog] input:not([type=checkbox])')[1]`, 'second value');
+    await win.type('paid');
+    await sleep(300);
+    await win.shot('11b-parameters');
+    await win.key('Enter', 'Enter', 13);
+    await win.waitFor(`document.body.innerText.match(/1 row(?![a-z])/)`, 'one row', 20000);
+    await sleep(400);
+    await win.shot('11c-parameters-result');
+  });
+  await step('Format SQL', async () => {
+    await replaceEditor(
+      'select o.id,o.status,c.email from shop.orders o join shop.customers c on c.id=o.customer_id where o.total>10 order by o.id;',
+    );
+    await win.click(`document.querySelector('button[aria-label="Format SQL"]')`, 'Format SQL');
+    await win.waitFor(
+      `${visible('.cm-content')}[0]?.querySelectorAll('.cm-line').length > 4`,
+      'formatted over several lines',
+    );
+    await sleep(300);
+    await win.shot('11d-formatted');
+  });
+  await step('search the history', async () => {
+    await win.click(`${visible('[role=tab]')}.find((t) => t.textContent.trim() === 'History')`, 'History tab');
+    await win.click(`document.querySelector('input[aria-label="Search history"]')`, 'history search');
+    await win.type('tour_migration');
+    await win.waitFor(`!!document.querySelector('ul[aria-label="Matching runs"] li')`, 'matching runs', 15000);
+    await sleep(400);
+    await win.shot('11e-history-search');
+  });
+  await step('insert a snippet', async () => {
+    await apiCall('POST', '/snippets', {
+      name: 'Recent orders',
+      body: 'select * from shop.orders order by id desc limit 10;',
+    });
+    await replaceEditor('');
+    await win.click(`${visible('[role=tab]')}.find((t) => t.textContent.trim() === 'Snippets')`, 'Snippets tab');
+    await win.click(`document.querySelector('button[aria-label="Insert Recent orders"]')`, 'Insert Recent orders');
+    await win.waitFor(`(${editorText}).includes('order by id desc limit 10')`, 'snippet in the editor');
+    await sleep(300);
+    await win.shot('11f-snippet-inserted');
+  });
+  await step('⌘K reruns a saved query with its remembered parameter', async () => {
+    const tabs = await win.evaluate(
+      `fetch(window.kleos.apiBase + '/api/connections', { headers: { authorization: 'Bearer ' + window.kleos.token } }).then((r) => r.json())`,
+    );
+    const dev = tabs.find((c) => c.nickname === 'shop (dev)');
+    await apiCall('POST', '/saved-queries', {
+      connectionId: dev.id,
+      name: 'Orders by status',
+      sql: 'select id, status, total from shop.orders where status = :status order by id;',
+      chart: null,
+      paramValues: { ':status': 'paid' },
+    });
+    await win.click(`document.querySelector('button[aria-label="Open the command palette"]')`, 'Search button');
+    await win.waitFor(`!!document.querySelector('[cmdk-input]')`, 'palette input');
+    await win.type('Orders by status');
+    await win.waitFor(
+      `[...document.querySelectorAll('[cmdk-item]')][0]?.textContent.includes('Run saved query')`,
+      'Run saved query ranked first',
+      15000,
+    );
+    await win.key('Enter', 'Enter', 13);
+    await win.waitFor(
+      `[...document.querySelectorAll('[role=dialog] input:not([type=checkbox])')].some((i) => i.value === 'paid')`,
+      'prompt prefilled with paid',
+      15000,
+    );
+    await sleep(300);
+    await win.shot('11g-saved-query-prompt');
+    await win.key('Enter', 'Enter', 13);
+    await win.waitFor(
+      `!document.querySelector('[role=dialog]') && ${visible('[role=gridcell]')}.some((c) => c.textContent.trim() === 'paid')`,
+      'paid orders',
+      20000,
+    );
+    await sleep(400);
+    await win.shot('11h-saved-query-rerun');
+  });
   await step('monitor', async () => {
     await win.click(`${visible('[role=tab]')}.find((t) => t.textContent.trim() === 'Monitor')`, 'Monitor tab');
     await sleep(11000);
@@ -607,7 +722,11 @@ try {
     await again.key('Enter', 'Enter', 13);
     await again.waitFor(`!!${front}`, 'restored workspace', 20000);
     await again.click(`${visible('[role=tab]')}.find((t) => t.textContent.trim() === 'Query')`, 'Query tab');
-    await again.waitFor(`${visible('.cm-content')}[0]?.textContent.includes('stauts')`, 'restored query SQL', 20000);
+    await again.waitFor(
+      `${visible('.cm-content')}[0]?.textContent.includes('where status = :status') && document.body.innerText.includes('Query 1') && document.body.innerText.includes('Orders by status')`,
+      'restored query tabs and SQL',
+      20000,
+    );
     await sleep(600);
     await again.shot('20-restored-query');
   });
