@@ -17,10 +17,16 @@ export function nodeHeight(columnCount: number): number {
 export type ColumnRef = { schema: string; table: string; column: string };
 
 export type TableNodeData = {
+  /** For an external node, a copy of the table that keeps only its key columns. */
   table: Table;
   /** Column name -> what it references (first FK wins for a column in several FKs). */
   references: Record<string, ColumnRef>;
   primaryKey: string[];
+  /**
+   * A table of another schema, linked to the shown one by a foreign key either way: drawn
+   * compact (schema-qualified name, only the columns its keys use) so the edge has an end.
+   */
+  external: boolean;
 };
 
 export type ErNode = {
@@ -50,7 +56,10 @@ export type ErGraph = {
   total: number;
   /** True when neighbour-only mode applies (the schema has more tables than the threshold). */
   limited: boolean;
-  /** FKs from this schema's tables to tables of other schemas: kept on the column, not drawn. */
+  /**
+   * Cross-schema FKs that could not be drawn because the other table is missing from the model
+   * (the others get an external node). Their columns still show the reference.
+   */
   external: ForeignKey[];
 };
 
@@ -88,9 +97,10 @@ export function neighbours(key: string, fks: ForeignKey[]): Set<string> {
 }
 
 /**
- * Nodes and edges of one schema's ER diagram. Edges join only tables of this schema; FKs to other
- * schemas are listed in `external` and shown on the column (icon + detail-panel link) instead.
- * Above `threshold` tables only `selected` and its neighbours are kept (none when nothing is selected).
+ * Nodes and edges of one schema's ER diagram. A foreign key between this schema and another one
+ * is drawn too: the other table becomes an external node (see TableNodeData.external), listed
+ * after the schema's own tables. Above `threshold` tables only `selected` and its neighbours are
+ * kept (none when nothing is selected), with the selection's own external neighbours.
  */
 export function buildErGraph(
   model: SchemaModel,
@@ -103,10 +113,14 @@ export function buildErGraph(
   const limited = tables.length > threshold;
 
   let keep = inSchema;
+  /** Tables whose links to other schemas are drawn: all of them, or the selection in neighbour-only mode. */
+  let anchors = inSchema;
   if (limited) {
     keep = new Set();
+    anchors = new Set();
     const selectedKey = selected ? tableKey(selected) : null;
     if (selectedKey && inSchema.has(selectedKey)) {
+      anchors.add(selectedKey);
       keep.add(selectedKey);
       for (const n of neighbours(selectedKey, model.foreignKeys)) if (inSchema.has(n)) keep.add(n);
     }
@@ -117,22 +131,41 @@ export function buildErGraph(
     .map((t) => ({
       id: tableKey(t),
       ref: { schema: t.schema, name: t.name },
-      data: { table: t, references: columnReferences(t, model.foreignKeys), primaryKey: t.primaryKey },
+      data: {
+        table: t,
+        references: columnReferences(t, model.foreignKeys),
+        primaryKey: t.primaryKey,
+        external: false,
+      },
       width: NODE_WIDTH,
       height: nodeHeight(t.columns.length),
     }));
 
+  const allTables = new Map(model.tables.map((t) => [tableKey(t), t]));
+  /** External table key -> the columns its foreign keys to or from this schema use. */
+  const externalColumns = new Map<string, Set<string>>();
   const edges: ErEdge[] = [];
   const external: ForeignKey[] = [];
   for (const fk of model.foreignKeys) {
-    if (fk.schema !== schema) continue;
     const child = `${fk.schema}.${fk.table}`;
     const parent = `${fk.refSchema}.${fk.refTable}`;
-    if (!inSchema.has(parent)) {
-      if (inSchema.has(child)) external.push(fk);
-      continue;
+    const childHere = inSchema.has(child);
+    const parentHere = inSchema.has(parent);
+    if (!childHere && !parentHere) continue;
+    if (childHere && parentHere) {
+      if (!keep.has(child) || !keep.has(parent)) continue;
+    } else {
+      // One end in this schema; the other is drawn as an external node beside it.
+      const [local, remote, remoteColumns] = childHere ? [child, parent, fk.refColumns] : [parent, child, fk.columns];
+      if (!anchors.has(local)) continue;
+      if (!allTables.has(remote)) {
+        if (childHere) external.push(fk);
+        continue;
+      }
+      const used = externalColumns.get(remote) ?? new Set<string>();
+      for (const c of remoteColumns) used.add(c);
+      externalColumns.set(remote, used);
     }
-    if (!keep.has(child) || !keep.has(parent)) continue;
     edges.push({
       id: edgeId(fk),
       source: parent,
@@ -141,6 +174,23 @@ export function buildErGraph(
       targetHandle: inHandle(fk.columns[0] ?? ''),
       label: fk.columns.join(', '),
       fk,
+    });
+  }
+
+  for (const key of [...externalColumns.keys()].sort()) {
+    const t = allTables.get(key)!;
+    const used = externalColumns.get(key)!;
+    // Key columns in the table's own order.
+    const columns = t.columns.filter((c) => used.has(c.name));
+    const references = Object.fromEntries(
+      Object.entries(columnReferences(t, model.foreignKeys)).filter(([c]) => used.has(c)),
+    );
+    nodes.push({
+      id: key,
+      ref: { schema: t.schema, name: t.name },
+      data: { table: { ...t, columns }, references, primaryKey: t.primaryKey, external: true },
+      width: NODE_WIDTH,
+      height: nodeHeight(columns.length),
     });
   }
 
