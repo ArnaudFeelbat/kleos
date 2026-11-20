@@ -11,7 +11,7 @@ import { DataTab } from '@/features/data/data-tab';
 import { MonitorTab } from '@/features/monitor/monitor-tab';
 import { QueryTab } from '@/features/query/query-tab';
 import { SchemaTab } from '@/features/schema/schema-tab';
-import { openSavedQuery, relinkSavedQueries } from '@/features/query/store';
+import { getQueryWorkspace, openSavedQuery, relinkSavedQueries, requestTabAction } from '@/features/query/store';
 import { claimRestore, reportWorkspaceTab } from '@/features/shell/window-state';
 import { useWorkspaceIntent } from '@/features/shell/workspace-intents';
 import { api, ApiError, errorText, queryKeys } from '@/lib/api';
@@ -131,7 +131,8 @@ function Workspace({ sid, session, visible }: { sid: string; session: SessionInf
 
   if (!visited.has(state.activeTab)) setVisited(new Set([...visited, state.activeTab]));
 
-  // Requests from the ⌘K palette (open a table, switch tab, refresh the schema), applied once each.
+  // Requests from the ⌘K palette (open a table, switch tab, refresh the schema, open, run or insert
+  // SQL in the Query tab), applied once each.
   const intent = useWorkspaceIntent(sid);
   const applied = useRef(0);
   const { openTable, setActiveTab, refreshSchema } = state.value;
@@ -143,6 +144,13 @@ function Workspace({ sid, session, visible }: { sid: string; session: SessionInf
     else if (i.kind === 'tab') setActiveTab(i.tab);
     else if (i.kind === 'open-saved') {
       openSavedQuery(sid, i.query);
+      setActiveTab('query');
+    } else if (i.kind === 'run-saved') {
+      // The Query tab runs it once on screen, through the parameter prompt when it has any.
+      requestTabAction(sid, openSavedQuery(sid, i.query), { kind: 'run' });
+      setActiveTab('query');
+    } else if (i.kind === 'insert-sql') {
+      requestTabAction(sid, getQueryWorkspace(sid).activeId, { kind: 'insert', text: i.text });
       setActiveTab('query');
     } else
       refreshSchema().then(

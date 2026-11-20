@@ -14,7 +14,11 @@ type SqlEditorProps = {
   schema: SQLNamespace;
   defaultSchema: string | undefined;
   onRun(): void;
+  /** ⇧⌘↵: every statement of the editor. */
+  onRunAll(): void;
   onExplain(): void;
+  /** ⇧⌥F: format the selection or the whole editor. */
+  onFormat(): void;
   /** Statement that last ran, highlighted. */
   ranRange: { from: number; to: number } | null;
   /** Failing token of the last run, underlined as an error diagnostic. */
@@ -23,27 +27,30 @@ type SqlEditorProps = {
 };
 
 const RUN_EVENT = 'kleos:run';
+const RUN_ALL_EVENT = 'kleos:run-all';
 const EXPLAIN_EVENT = 'kleos:explain';
 
-/** ⌘↵ / ⌘E, raised as DOM events so the component handles them with its current callbacks. */
+const raise = (name: string) => (view: EditorView) => {
+  view.dom.dispatchEvent(new CustomEvent(name, { bubbles: true }));
+  return true;
+};
+
+/** ⌘↵ / ⇧⌘↵ / ⌘E, raised as DOM events so the component handles them with its current callbacks. */
 const runKeys = Prec.highest(
   keymap.of([
-    {
-      key: 'Mod-Enter',
-      run: (view) => {
-        view.dom.dispatchEvent(new CustomEvent(RUN_EVENT, { bubbles: true }));
-        return true;
-      },
-    },
-    {
-      key: 'Mod-e',
-      run: (view) => {
-        view.dom.dispatchEvent(new CustomEvent(EXPLAIN_EVENT, { bubbles: true }));
-        return true;
-      },
-    },
+    { key: 'Mod-Enter', run: raise(RUN_EVENT) },
+    { key: 'Shift-Mod-Enter', run: raise(RUN_ALL_EVENT) },
+    { key: 'Mod-e', run: raise(EXPLAIN_EVENT) },
   ]),
 );
+
+/**
+ * ⇧⌥F, matched on the physical key: on a Mac, ⌥ turns the character into "Ï", which a
+ * CodeMirror key name would not reliably catch.
+ */
+function isFormatKey(e: KeyboardEvent): boolean {
+  return e.code === 'KeyF' && e.shiftKey && e.altKey && !e.metaKey && !e.ctrlKey;
+}
 
 /**
  * The lint extension lives in the base configuration. setDiagnostics() would otherwise add it
@@ -75,7 +82,8 @@ function applyMarks(view: EditorView, ran: SqlEditorProps['ranRange'], err: Erro
 }
 
 /**
- * CodeMirror with the PostgreSQL dialect and schema autocomplete. ⌘↵ runs, ⌘E explains;
+ * CodeMirror with the PostgreSQL dialect and schema autocomplete. ⌘↵ runs, ⇧⌘↵ runs all,
+ * ⌘E explains, ⇧⌥F formats;
  * the last statement run is highlighted and an error position is underlined.
  */
 export function SqlEditor({
@@ -84,7 +92,9 @@ export function SqlEditor({
   schema,
   defaultSchema,
   onRun,
+  onRunAll,
   onExplain,
+  onFormat,
   ranRange,
   errorMark,
   onView,
@@ -95,14 +105,24 @@ export function SqlEditor({
     const el = wrapRef.current;
     if (!el) return;
     const run = () => onRun();
+    const runAll = () => onRunAll();
     const explain = () => onExplain();
+    const key = (e: KeyboardEvent) => {
+      if (!isFormatKey(e)) return;
+      e.preventDefault();
+      onFormat();
+    };
     el.addEventListener(RUN_EVENT, run);
+    el.addEventListener(RUN_ALL_EVENT, runAll);
     el.addEventListener(EXPLAIN_EVENT, explain);
+    el.addEventListener('keydown', key);
     return () => {
       el.removeEventListener(RUN_EVENT, run);
+      el.removeEventListener(RUN_ALL_EVENT, runAll);
       el.removeEventListener(EXPLAIN_EVENT, explain);
+      el.removeEventListener('keydown', key);
     };
-  }, [onRun, onExplain]);
+  }, [onRun, onRunAll, onExplain, onFormat]);
 
   const extensions = useMemo(
     () => [

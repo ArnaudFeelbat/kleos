@@ -11,14 +11,22 @@ import {
   isDirty,
   loadMore,
   openDraft,
+  openSavedQuery,
   peekQueryWorkspace,
   persistedQueryTabs,
   relinkSavedQueries,
   resetQueryWorkspaces,
+  requestTabAction,
   restoreQueryTabs,
+  runExplain,
   runQuery,
+  runScript,
+  selectScriptStep,
+  shownRun,
+  takeTabAction,
   updateTab,
 } from './store';
+import { splitScript } from './sql-script';
 
 vi.mock('@/lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof apiModule>();
@@ -208,5 +216,172 @@ describe('historyLoadsDirectly', () => {
     expect(historyLoadsDirectly('  \n', 'select 1')).toBe(true);
     expect(historyLoadsDirectly('select 1\n', 'select 1')).toBe(true);
     expect(historyLoadsDirectly('select 2', 'select 1')).toBe(false);
+  });
+});
+
+const started = (over: Partial<Awaited<ReturnType<typeof api.startQuery>>> = {}) => ({
+  qid: 'x',
+  columns: [],
+  rows: [],
+  hasMore: false,
+  command: 'INSERT 0 1',
+  rowCount: 1,
+  elapsedMs: 2,
+  ...over,
+});
+
+describe('run all', () => {
+  const script = 'begin;\ninsert into t values (1);\n\nselect n from t;\ncommit;';
+
+  it('runs every statement in order on the tab, one result each, and shows the last', async () => {
+    mocked.startQuery
+      .mockResolvedValueOnce(started({ command: 'BEGIN', rowCount: null }))
+      .mockResolvedValueOnce(started())
+      .mockResolvedValueOnce(started({ columns: [col], rows: [['1']], command: null }))
+      .mockResolvedValueOnce(started({ command: 'COMMIT', rowCount: null }));
+    const tab = getQueryWorkspace(sid).tabs[0]!;
+    const onStep = vi.fn();
+    const done = await runScript(sid, tab.id, splitScript(script), {}, onStep);
+
+    expect(mocked.startQuery.mock.calls.map(([, req]) => [req.sql, req.tabId, req.params])).toEqual([
+      ['begin', tab.id, undefined],
+      ['insert into t values (1)', tab.id, undefined],
+      ['select n from t', tab.id, undefined],
+      ['commit', tab.id, undefined],
+    ]);
+    expect(new Set(mocked.startQuery.mock.calls.map(([, req]) => req.qid)).size).toBe(4);
+    expect(onStep).toHaveBeenCalledTimes(4);
+    expect(done).toMatchObject({ status: 'done', current: 3, selected: null });
+    expect(done!.steps.map((s) => [s.line, s.run?.status, s.run?.command])).toEqual([
+      [1, 'done', 'BEGIN'],
+      [2, 'done', 'INSERT 0 1'],
+      [4, 'done', null],
+      [5, 'done', 'COMMIT'],
+    ]);
+    const t = getTab(sid, tab.id)!;
+    expect(t.run).toBeNull();
+    expect(shownRun(t)?.command).toBe('COMMIT');
+    selectScriptStep(sid, tab.id, 2);
+    expect(shownRun(getTab(sid, tab.id)!)?.rows).toEqual([['1']]);
+  });
+
+  it('stops at the first error and leaves the rest unrun', async () => {
+    mocked.startQuery
+      .mockResolvedValueOnce(started({ command: 'BEGIN', rowCount: null }))
+      .mockRejectedValueOnce(new ApiError(400, { code: '23505', message: 'duplicate key value' }));
+    const tab = getQueryWorkspace(sid).tabs[0]!;
+    const done = await runScript(sid, tab.id, splitScript(script));
+    expect(mocked.startQuery).toHaveBeenCalledTimes(2);
+    expect(done).toMatchObject({ status: 'error', current: 1 });
+    expect(done!.steps.map((s) => s.run?.status ?? null)).toEqual(['done', 'error', null, null]);
+    expect(shownRun(getTab(sid, tab.id)!)?.error).toMatchObject({ code: '23505' });
+    // A statement that never ran cannot be picked.
+    selectScriptStep(sid, tab.id, 3);
+    expect(getTab(sid, tab.id)!.script!.selected).toBeNull();
+  });
+
+  it('cancels the running statement and stops there', async () => {
+    let reject!: (err: unknown) => void;
+    mocked.startQuery
+      .mockResolvedValueOnce(started({ command: 'BEGIN', rowCount: null }))
+      .mockReturnValueOnce(new Promise((_, r) => (reject = r)));
+    const tab = getQueryWorkspace(sid).tabs[0]!;
+    const running = runScript(sid, tab.id, splitScript(script));
+    await vi.waitFor(() => expect(mocked.startQuery).toHaveBeenCalledTimes(2));
+    expect(getTab(sid, tab.id)!.script).toMatchObject({ status: 'running', current: 1 });
+
+    await cancelRunning(sid, tab.id);
+    const qid = mocked.startQuery.mock.calls[1]![1].qid;
+    expect(mocked.cancelQuery).toHaveBeenCalledWith(sid, qid);
+    reject(new ApiError(400, { code: '57014', message: 'canceling statement due to user request' }));
+    const done = await running;
+    expect(done).toMatchObject({ status: 'cancelled', current: 1 });
+    expect(done!.steps.map((s) => s.run?.status ?? null)).toEqual(['done', 'cancelled', null, null]);
+    expect(mocked.startQuery).toHaveBeenCalledTimes(2);
+  });
+
+  it('stops before the next statement when Cancel lands between two', async () => {
+    let resolve!: (v: ReturnType<typeof started>) => void;
+    mocked.startQuery.mockReturnValueOnce(new Promise((r) => (resolve = r)));
+    const tab = getQueryWorkspace(sid).tabs[0]!;
+    const running = runScript(sid, tab.id, splitScript(script));
+    await cancelRunning(sid, tab.id);
+    // The statement finished on the server before the cancel reached it.
+    resolve(started({ command: 'BEGIN', rowCount: null }));
+    expect(await running).toMatchObject({ status: 'cancelled', current: 0 });
+    expect(mocked.startQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the rows of a result whose cursor the next statement closed', async () => {
+    mocked.startQuery
+      .mockResolvedValueOnce(started({ columns: [col], rows: [['1']], hasMore: true, command: null }))
+      .mockResolvedValueOnce(started({ command: 'SELECT 1' }));
+    const tab = getQueryWorkspace(sid).tabs[0]!;
+    const done = await runScript(sid, tab.id, splitScript('select n from big; select 1'));
+    expect(done!.steps[0]!.run).toMatchObject({ hasMore: false, truncated: true, rows: [['1']] });
+  });
+
+  it('passes each statement only its own parameters, renumbered', async () => {
+    mocked.startQuery.mockResolvedValue(started());
+    const tab = getQueryWorkspace(sid).tabs[0]!;
+    const sql = 'delete from t where d < :day;\nselect 1;\ninsert into log values ($2, :day, :who)';
+    await runScript(sid, tab.id, splitScript(sql), { ':day': '2026-11-01', $2: 'x', ':who': null });
+    expect(mocked.startQuery.mock.calls.map(([, req]) => [req.sql, req.params])).toEqual([
+      ['delete from t where d < $1', ['2026-11-01']],
+      ['select 1', undefined],
+      ['insert into log values ($1, $2, $3)', ['x', '2026-11-01', null]],
+    ]);
+  });
+});
+
+describe('parameters', () => {
+  it('binds placeholders as params on a run and maps the error position back', async () => {
+    mocked.startQuery.mockRejectedValue(
+      new ApiError(400, { code: '42703', message: 'column "stauts" does not exist', position: 12 }),
+    );
+    const tab = getQueryWorkspace(sid).tabs[0]!;
+    const sql = 'select :customer_name, stauts from t';
+    await runQuery(sid, tab.id, { sql, from: 0, to: sql.length }, undefined, { ':customer_name': 'Ada' });
+    expect(mocked.startQuery).toHaveBeenCalledWith(
+      sid,
+      expect.objectContaining({ sql: 'select $1, stauts from t', params: ['Ada'] }),
+    );
+    // "stauts" is character 12 of the SQL sent and 24 of the SQL as written.
+    expect(getTab(sid, tab.id)!.run!.error!.position).toBe(sql.indexOf('stauts') + 1);
+  });
+
+  it('binds placeholders on explain too', async () => {
+    mocked.explain.mockResolvedValue({ plan: { 'Node Type': 'Result' }, planningMs: 0, executionMs: 0 });
+    const tab = getQueryWorkspace(sid).tabs[0]!;
+    await runExplain(sid, tab.id, { sql: 'select $1::int', from: 0, to: 14 }, undefined, { $1: '7' });
+    expect(mocked.explain).toHaveBeenCalledWith(sid, expect.objectContaining({ sql: 'select $1::int', params: ['7'] }));
+  });
+
+  it('seeds a tab opened from a saved query with its remembered values', () => {
+    const q = {
+      id: 'q1',
+      connectionId: 'c1',
+      name: 'By customer',
+      sql: 'select * from orders where customer_id = :customer',
+      chart: null,
+      paramValues: { ':customer': '42' },
+      createdAt: '',
+      updatedAt: '',
+    };
+    const id = openSavedQuery(sid, q);
+    expect(getTab(sid, id)!.paramValues).toEqual({ ':customer': '42' });
+    // Values typed in the open tab win when the query is opened again.
+    updateTab(sid, id, (t) => ({ ...t, paramValues: { ':customer': '7' } }));
+    expect(openSavedQuery(sid, { ...q, paramValues: { ':customer': '42', ':other': 'x' } })).toBe(id);
+    expect(getTab(sid, id)!.paramValues).toEqual({ ':customer': '7', ':other': 'x' });
+  });
+});
+
+describe('pending tab actions', () => {
+  it('are taken once', () => {
+    const tab = getQueryWorkspace(sid).tabs[0]!;
+    requestTabAction(sid, tab.id, { kind: 'insert', text: 'now()' });
+    expect(takeTabAction(sid, tab.id)).toEqual({ kind: 'insert', text: 'now()' });
+    expect(takeTabAction(sid, tab.id)).toBeNull();
   });
 });

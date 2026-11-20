@@ -112,7 +112,7 @@ describe('QueryTab', () => {
       elapsedMs: 4,
     });
     renderTab();
-    await user.click(screen.getByRole('button', { name: /^Run/ }));
+    await user.click(screen.getByRole('button', { name: /^Run(?! all)/ }));
     expect(mocked.startQuery).toHaveBeenCalledWith(
       sid,
       expect.objectContaining({ sql: 'select 1 as n', tabId, pageSize: 500, qid: expect.any(String) }),
@@ -136,7 +136,7 @@ describe('QueryTab', () => {
       elapsedMs: 2,
     });
     renderTab();
-    await user.click(screen.getByRole('button', { name: /^Run/ }));
+    await user.click(screen.getByRole('button', { name: /^Run(?! all)/ }));
     expect((await screen.findAllByText('UPDATE 3')).length).toBeGreaterThan(0);
   });
 
@@ -152,7 +152,7 @@ describe('QueryTab', () => {
       }),
     );
     const { container } = renderTab();
-    await user.click(screen.getByRole('button', { name: /^Run/ }));
+    await user.click(screen.getByRole('button', { name: /^Run(?! all)/ }));
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('42703 column o.stauts does not exist');
     expect(alert).toHaveTextContent('Line 1, column 8');
@@ -167,7 +167,7 @@ describe('QueryTab', () => {
       new ApiError(400, { code: '25006', message: 'cannot execute DELETE in a read-only transaction' }),
     );
     renderTab({ readOnly: true });
-    await user.click(screen.getByRole('button', { name: /^Run/ }));
+    await user.click(screen.getByRole('button', { name: /^Run(?! all)/ }));
     expect(await screen.findByRole('alert')).toHaveTextContent('This connection is read-only');
   });
 
@@ -178,7 +178,7 @@ describe('QueryTab', () => {
     renderTab();
     const cancel = screen.getByRole('button', { name: 'Cancel' });
     expect(cancel).toBeDisabled();
-    await user.click(screen.getByRole('button', { name: /^Run/ }));
+    await user.click(screen.getByRole('button', { name: /^Run(?! all)/ }));
     await waitFor(() => expect(cancel).toBeEnabled());
     await user.click(cancel);
     const qid = mocked.startQuery.mock.calls[0]![1].qid;
@@ -230,7 +230,7 @@ describe('QueryTab', () => {
       updatedAt: '2026-11-18T10:00:00Z',
     }));
     renderTab();
-    await user.click(screen.getByRole('button', { name: /^Run/ }));
+    await user.click(screen.getByRole('button', { name: /^Run(?! all)/ }));
     await screen.findByText('2 rows');
     await user.click(screen.getByRole('tab', { name: 'Chart' }));
     expect(screen.getByRole('button', { name: 'Remove web' })).toBeInTheDocument();
@@ -272,7 +272,7 @@ describe('QueryTab', () => {
       elapsedMs: 1,
     });
     renderTab();
-    await user.click(screen.getByRole('button', { name: /^Run/ }));
+    await user.click(screen.getByRole('button', { name: /^Run(?! all)/ }));
     await user.click(await screen.findByText('7001'));
     await user.keyboard('{Alt>}{ArrowRight}{/Alt}');
     expect(screen.getAllByRole('gridcell').map((c) => c.textContent)).toEqual(['7002', '7001']);

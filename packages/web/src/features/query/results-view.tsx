@@ -60,7 +60,8 @@ export function ResultsView({ run, errorLocation, onLoadMore }: ResultsViewProps
         hint={
           <>
             Run a statement with <kbd className={kbdNeutral}>{isMac ? '⌘↵' : 'Ctrl+↵'}</kbd>: the selection, or the
-            statement under the cursor.
+            statement under the cursor. <kbd className={kbdNeutral}>{isMac ? '⇧⌘↵' : 'Shift+Ctrl+↵'}</kbd> runs every
+            statement in order.
           </>
         }
       />
@@ -133,6 +134,12 @@ export function ResultsView({ run, errorLocation, onLoadMore }: ResultsViewProps
           onResetColumns={() => setLayout(emptyGridLayout)}
           columnsCustomized={!isEmptyLayout(layout)}
         />
+        {run.truncated && !run.pageError && (
+          <div className="bg-sidebar/60 text-muted-foreground flex items-center gap-3 border-t px-3 py-1.5 text-xs">
+            Only the first {formatInt(run.rows.length)} rows: the next statement of the script closed this result. Run
+            the statement on its own to page through all of it.
+          </div>
+        )}
         {(run.hasMore || run.pageError) && (
           <div className="bg-sidebar/60 flex items-center gap-3 border-t px-3 py-1.5 text-xs">
             {run.pageError ? (

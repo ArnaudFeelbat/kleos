@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getQueryWorkspace, isDirty, resetQueryWorkspaces } from '@/features/query/store';
 import { shopModel } from '@/features/schema/test-fixtures';
 import { tabsStore } from '@/features/shell/tabs-store';
+import { requestWorkspace, resetWorkspaceIntents } from '@/features/shell/workspace-intents';
 import { placeRestoredTabs, resetWindowState, snapshotWindowState } from '@/features/shell/window-state';
 import type * as ApiModule from '@/lib/api';
 import { api, ApiError } from '@/lib/api';
@@ -226,5 +227,52 @@ describe('WorkspaceScreen — a server restored from the last window', { timeout
         { title: 'Gone', savedQueryId: null },
       ],
     });
+  });
+});
+
+describe('WorkspaceScreen — ⌘K actions on the Query tab', { timeout: 15_000 }, () => {
+  afterEach(() => {
+    act(() => {
+      resetWorkspaceIntents();
+      resetQueryWorkspaces();
+    });
+  });
+  const saved = {
+    id: 'q7',
+    connectionId: 'c1',
+    name: 'By customer',
+    sql: 'select * from orders where customer_id = :customer',
+    chart: null,
+    paramValues: { ':customer': '42' },
+    createdAt: '2026-11-18T10:00:00Z',
+    updatedAt: '2026-11-18T10:00:00Z',
+  };
+  const active = () => {
+    const ws = getQueryWorkspace('s1');
+    return ws.tabs.find((t) => t.id === ws.activeId)!;
+  };
+
+  it('opens a saved query on the Query tab and asks that tab to run it (run-saved)', async () => {
+    mocked.getSession.mockResolvedValue(sessionInfo);
+    renderWorkspace();
+    expect(await screen.findByRole('tab', { name: 'Schema' })).toHaveAttribute('aria-selected', 'true');
+    act(() => requestWorkspace('s1', { kind: 'run-saved', query: saved }));
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Query' })).toHaveAttribute('aria-selected', 'true'));
+    expect(active()).toMatchObject({
+      title: 'By customer',
+      saved: { id: 'q7' },
+      paramValues: { ':customer': '42' },
+      pending: { kind: 'run' },
+    });
+  });
+
+  it('switches to the Query tab and asks the active query tab to insert the text (insert-sql)', async () => {
+    mocked.getSession.mockResolvedValue(sessionInfo);
+    renderWorkspace();
+    await screen.findByRole('tab', { name: 'Schema' });
+    act(() => requestWorkspace('s1', { kind: 'insert-sql', text: 'now()' }));
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Query' })).toHaveAttribute('aria-selected', 'true'));
+    expect(getQueryWorkspace('s1').tabs).toHaveLength(1);
+    expect(active().pending).toEqual({ kind: 'insert', text: 'now()' });
   });
 });
