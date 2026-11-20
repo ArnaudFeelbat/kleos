@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 export * from './connection';
+export * from './ddl';
 export * from './errors';
 export * from './grid';
 export * from './jobs';

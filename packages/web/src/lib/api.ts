@@ -2,6 +2,8 @@ import { z } from 'zod';
 import {
   ApiErrorBody,
   ApplyEditsResult,
+  DdlPreview,
+  DdlResult,
   CountResult,
   ExplainResult,
   GridLayout,
@@ -23,6 +25,7 @@ import {
   BackendActionResult,
   type ConnectionInput,
   type CountRequest,
+  type DdlRequest,
   type ExplainRequest,
   type ExportRequest,
   type ImportPreviewRequest,
@@ -108,6 +111,10 @@ export const api = {
     request('GET', `/sessions/${enc(sid)}/schema${refresh ? '?refresh=1' : ''}`, SchemaModel),
   rows: (sid: string, req: RowsRequest) => request('POST', `/sessions/${enc(sid)}/rows`, RowsPage, req),
   count: (sid: string, req: CountRequest) => request('POST', `/sessions/${enc(sid)}/count`, CountResult, req),
+  /** The exact statements a list of schema changes becomes; nothing runs. (0.6) */
+  previewDdl: (sid: string, req: DdlRequest) => request('POST', `/sessions/${enc(sid)}/ddl/preview`, DdlPreview, req),
+  /** Runs them in one transaction; a failure carries statementIndex and applies nothing. (0.6) */
+  applyDdl: (sid: string, req: DdlRequest) => request('POST', `/sessions/${enc(sid)}/ddl`, DdlResult, req),
   applyEdits: (sid: string, edits: RowEdit[]) =>
     request('POST', `/sessions/${enc(sid)}/edits`, ApplyEditsResult, { edits }),
 

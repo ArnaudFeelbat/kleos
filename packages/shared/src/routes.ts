@@ -31,6 +31,9 @@
  *   POST   /sessions/:sid/rows   RowsRequest         -> RowsPage
  *   POST   /sessions/:sid/count  CountRequest        -> CountResult
  *   POST   /sessions/:sid/edits  ApplyEditsRequest   -> ApplyEditsResult
+ *   POST   /sessions/:sid/ddl/preview DdlRequest     -> DdlPreview (the exact statements; nothing runs)    (0.6)
+ *   POST   /sessions/:sid/ddl    DdlRequest          -> DdlResult (one transaction; 403 on read-only;
+ *                                                      a failure rolls back, statementIndex names it)    (0.6)
  *   POST   /sessions/:sid/queries QueryRequest       -> QueryStarted   (records history)
  *   GET    /sessions/:sid/queries/:qid/page?size=500 -> QueryPage
  *   POST   /sessions/:sid/queries/:qid/cancel        -> 204

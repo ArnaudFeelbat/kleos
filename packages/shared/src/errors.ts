@@ -14,6 +14,8 @@ export const ApiErrorBody = z.object({
   /** For POST /edits: index of the failing edit and the column at fault, when known. */
   editIndex: z.number().optional(),
   column: z.string().optional(),
+  /** For POST /ddl: index of the statement (and change) that failed; nothing was applied. (0.6) */
+  statementIndex: z.number().optional(),
 });
 export type ApiErrorBody = z.infer<typeof ApiErrorBody>;
 
