@@ -13,10 +13,13 @@ describe('buildErGraph', () => {
       'public.order_items',
       'public.orders',
       'public.products',
+      // sales.invoices references public.orders: drawn as an external node, after the schema's own.
+      'sales.invoices',
     ]);
+    expect(graph.nodes.filter((n) => n.data.external).map((n) => n.id)).toEqual(['sales.invoices']);
     expect(graph.limited).toBe(false);
     expect(graph.total).toBe(5);
-    expect(graph.edges).toHaveLength(5);
+    expect(graph.edges).toHaveLength(6);
     const orders = graph.edges.find((e) => e.fk.name === 'orders_customer_id_fkey');
     // Parent -> child, between the two columns.
     expect(orders).toMatchObject({
@@ -45,12 +48,93 @@ describe('buildErGraph', () => {
     expect(items.height).toBe(nodeHeight(3));
   });
 
-  it('scopes to the picked schema and lists cross-schema keys as external', () => {
-    const graph = buildErGraph(shopModel(), 'sales', null);
-    expect(graph.nodes.map((n) => n.id)).toEqual(['sales.invoices']);
-    expect(graph.edges).toEqual([]);
-    expect(graph.external.map((f) => f.name)).toEqual(['invoices_order_id_fkey']);
-    expect(graph.nodes[0]!.data.references.order_id).toEqual({ schema: 'public', table: 'orders', column: 'id' });
+  describe('across schemas', () => {
+    it('draws a referenced table of another schema as a compact external node with its edge', () => {
+      const graph = buildErGraph(shopModel(), 'sales', null);
+      expect(graph.total).toBe(1);
+      expect(graph.nodes.map((n) => [n.id, n.data.external])).toEqual([
+        ['sales.invoices', false],
+        ['public.orders', true],
+      ]);
+      expect(graph.nodes[0]!.data.references.order_id).toEqual({ schema: 'public', table: 'orders', column: 'id' });
+      // Only the referenced key column, sized to match.
+      const orders = graph.nodes[1]!;
+      expect(orders.ref).toEqual({ schema: 'public', name: 'orders' });
+      expect(orders.data.table.columns.map((c) => c.name)).toEqual(['id']);
+      expect(orders.data.primaryKey).toEqual(['id']);
+      expect(orders.height).toBe(nodeHeight(1));
+      expect(graph.edges).toEqual([
+        expect.objectContaining({
+          id: 'sales.invoices.invoices_order_id_fkey',
+          source: 'public.orders',
+          sourceHandle: outHandle('id'),
+          target: 'sales.invoices',
+          targetHandle: inHandle('order_id'),
+        }),
+      ]);
+      expect(graph.external).toEqual([]);
+    });
+
+    it('draws a referencing table of another schema with its referencing columns only', () => {
+      const graph = buildErGraph(shopModel(), 'public', null);
+      const invoices = graph.nodes.find((n) => n.id === 'sales.invoices')!;
+      expect(invoices.data.external).toBe(true);
+      expect(invoices.data.table.columns.map((c) => c.name)).toEqual(['order_id']);
+      expect(invoices.data.references).toEqual({ order_id: { schema: 'public', table: 'orders', column: 'id' } });
+      expect(graph.edges.find((e) => e.target === 'sales.invoices')).toMatchObject({
+        source: 'public.orders',
+        targetHandle: inHandle('order_id'),
+      });
+    });
+
+    it('makes one external node per table, with the key columns of every edge in table order', () => {
+      const base = shopModel();
+      const model: SchemaModel = {
+        ...base,
+        tables: [
+          ...base.tables,
+          table('audit', [col('id'), col('order_ref', 'bigint'), col('note', 'text'), col('customer_ref', 'uuid')], {
+            schema: 'ops',
+          }),
+        ],
+        foreignKeys: [
+          ...base.foreignKeys,
+          fk('audit', 'customer_ref', 'customers', 'id', { schema: 'ops' }),
+          fk('audit', 'order_ref', 'orders', 'id', { schema: 'ops' }),
+        ],
+      };
+      const graph = buildErGraph(model, 'public', null);
+      const audit = graph.nodes.find((n) => n.id === 'ops.audit')!;
+      expect(audit.data.table.columns.map((c) => c.name)).toEqual(['order_ref', 'customer_ref']);
+      expect(graph.nodes.filter((n) => n.data.external).map((n) => n.id)).toEqual(['ops.audit', 'sales.invoices']);
+      expect(graph.edges.filter((e) => e.target === 'ops.audit')).toHaveLength(2);
+    });
+
+    it('draws external neighbours of the selected table only, above the threshold', () => {
+      const graph = buildErGraph(shopModel(), 'public', { schema: 'public', name: 'customers' }, 3);
+      expect(graph.nodes.map((n) => n.id)).toEqual(['public.customers', 'public.orders']);
+      const viaOrders = buildErGraph(shopModel(), 'public', { schema: 'public', name: 'orders' }, 3);
+      expect(viaOrders.nodes.filter((n) => n.data.external).map((n) => n.id)).toEqual(['sales.invoices']);
+    });
+
+    it('keeps a key to a table missing from the model in `external`, undrawn', () => {
+      const base = shopModel();
+      const model: SchemaModel = {
+        ...base,
+        foreignKeys: [...base.foreignKeys, fk('orders', 'customer_id', 'ghosts', 'id', { refSchema: 'gone' })],
+      };
+      const graph = buildErGraph(model, 'public', null);
+      expect(graph.external.map((f) => f.refTable)).toEqual(['ghosts']);
+      expect(graph.nodes.some((n) => n.id === 'gone.ghosts')).toBe(false);
+      expect(graph.edges.some((e) => e.source === 'gone.ghosts')).toBe(false);
+    });
+
+    it('lays out external nodes with the rest', { timeout: 20_000 }, async () => {
+      const graph = buildErGraph(shopModel(), 'sales', null);
+      const positions = await layoutWithElk(graph);
+      expect(Object.keys(positions).sort()).toEqual(['public.orders', 'sales.invoices']);
+      expect(positions['public.orders']!.x).toBeLessThan(positions['sales.invoices']!.x);
+    });
   });
 
   describe('above the threshold', () => {
@@ -79,9 +163,12 @@ describe('buildErGraph', () => {
         'public.order_items',
         'public.orders',
         'public.t000',
+        // sales.invoices references orders: an external neighbour.
+        'sales.invoices',
       ]);
       // Only edges between drawn tables; order_items -> products is left out.
       expect(graph.edges.map((e) => e.fk.name).sort()).toEqual([
+        'invoices_order_id_fkey',
         'order_items_order_id_fkey',
         'orders_customer_id_fkey',
         't000_id_fkey',
@@ -139,7 +226,12 @@ describe('layoutWithElk', { timeout: 20_000 }, () => {
     const graph = buildErGraph(shopModel(), 'public', null);
     const known = { 'public.customers': { x: 500, y: 40 }, 'public.orders': { x: 900, y: 300 } };
     const placed = await placeMissing(graph, known);
-    expect(Object.keys(placed).sort()).toEqual(['public.categories', 'public.order_items', 'public.products']);
+    expect(Object.keys(placed).sort()).toEqual([
+      'public.categories',
+      'public.order_items',
+      'public.products',
+      'sales.invoices',
+    ]);
     const ordersBottom = 300 + graph.nodes.find((n) => n.id === 'public.orders')!.height;
     for (const p of Object.values(placed)) {
       expect(p.y).toBeGreaterThan(ordersBottom);

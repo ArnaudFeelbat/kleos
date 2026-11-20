@@ -33,6 +33,9 @@ contextBridge.exposeInMainWorld('kleos', {
   getAppearance: () => ipcRenderer.invoke('kleos:get-appearance'),
   setAppearance: (mode: string) => ipcRenderer.send('kleos:set-appearance', mode),
   saveFileDialog: (args: { defaultName: string; format: string }) => ipcRenderer.invoke('kleos:save-dialog', args),
+  // 0.6: the main process writes only the path the save dialog just returned to this window.
+  writeFile: (path: string, data: string | Uint8Array): Promise<void> =>
+    ipcRenderer.invoke('kleos:write-file', path, data),
   openFileDialog: (kind: string = 'csv') => ipcRenderer.invoke('kleos:open-dialog', kind),
   revealInFinder: (path: string) => ipcRenderer.send('kleos:reveal', path),
   onCommand: (listener: (command: string) => void) => subscribe('kleos:command', listener),

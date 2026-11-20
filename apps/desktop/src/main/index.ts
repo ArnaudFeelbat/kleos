@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BrowserWindow, app, dialog, ipcMain, nativeTheme, net, shell } from 'electron';
@@ -246,12 +247,33 @@ const exportFilters: Record<string, Electron.FileFilter> = {
   csv: { name: 'CSV', extensions: ['csv'] },
   json: { name: 'JSON', extensions: ['json'] },
   xlsx: { name: 'Excel workbook', extensions: ['xlsx'] },
+  png: { name: 'PNG image', extensions: ['png'] },
+  svg: { name: 'SVG image', extensions: ['svg'] },
 };
+
+/**
+ * The last path the save dialog returned to each window (webContents id). `kleos:write-file`
+ * writes only there, once: the renderer can't pick a path on its own, only fill the file the
+ * user just chose.
+ */
+const pickedPaths = new Map<number, string>();
+const forgetsOnClose = new WeakSet<Electron.WebContents>();
+
+function rememberPick(sender: Electron.WebContents, path: string | null): string | null {
+  if (!forgetsOnClose.has(sender)) {
+    forgetsOnClose.add(sender);
+    const id = sender.id;
+    sender.once('destroyed', () => pickedPaths.delete(id));
+  }
+  if (path) pickedPaths.set(sender.id, path);
+  else pickedPaths.delete(sender.id);
+  return path;
+}
 
 ipcMain.handle('kleos:save-dialog', async (event, args: { defaultName?: unknown; format?: unknown }) => {
   const format = typeof args?.format === 'string' && args.format in exportFilters ? args.format : 'csv';
   const name = typeof args?.defaultName === 'string' ? args.defaultName.replace(/[/\\:]/g, '-') : 'export';
-  if (fakeDialogDir) return join(fakeDialogDir, `${name}.${format}`);
+  if (fakeDialogDir) return rememberPick(event.sender, join(fakeDialogDir, `${name}.${format}`));
   const win = BrowserWindow.fromWebContents(event.sender);
   const options: Electron.SaveDialogOptions = {
     defaultPath: join(app.getPath('downloads'), `${name}.${format}`),
@@ -259,7 +281,20 @@ ipcMain.handle('kleos:save-dialog', async (event, args: { defaultName?: unknown;
     properties: ['createDirectory', 'showOverwriteConfirmation'],
   };
   const result = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options);
-  return result.canceled || !result.filePath ? null : result.filePath;
+  return rememberPick(event.sender, result.canceled || !result.filePath ? null : result.filePath);
+});
+
+// Files the renderer produces itself (diagram exports). Strings are written as UTF-8, bytes as is.
+ipcMain.handle('kleos:write-file', async (event, path: unknown, data: unknown) => {
+  let bytes: string | Uint8Array;
+  if (typeof data === 'string' || data instanceof Uint8Array) bytes = data;
+  else if (data instanceof ArrayBuffer) bytes = new Uint8Array(data);
+  else throw new Error('Kleos can only write text or bytes to a file.');
+  if (typeof path !== 'string' || pickedPaths.get(event.sender.id) !== path) {
+    throw new Error('Only the file just picked in the save dialog can be written.');
+  }
+  pickedPaths.delete(event.sender.id);
+  await writeFile(path, bytes, typeof bytes === 'string' ? 'utf8' : undefined);
 });
 
 const openKinds: Record<string, Pick<Electron.OpenDialogOptions, 'filters' | 'defaultPath' | 'title'>> = {
