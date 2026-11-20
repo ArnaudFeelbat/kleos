@@ -153,6 +153,26 @@ describe('query routes', () => {
     expect((await call('DELETE', `/sessions/${sid}/tabs/tab-7`)).status).toBe(204);
     expect(session.callsTo('closeTab')).toEqual([['tab-7']]);
   });
+
+  it('passes bind values to the query and to explain, and validates them', async () => {
+    const { call, openSession } = setup();
+    const { sid, session, connection } = await openSession();
+    const sql = 'select * from orders where id = $1 and note is not distinct from $2';
+    const params = ['42', null];
+    expect((await call('POST', `/sessions/${sid}/queries`, { ...run, sql, params })).status).toBe(200);
+    expect(session.callsTo('runQuery')).toEqual([[sql, { qid: 'q1', tabId: 't1', pageSize: 500, params }]]);
+    expect((await call('POST', `/sessions/${sid}/explain`, { ...run, qid: 'q2', sql, params })).status).toBe(200);
+    expect(session.callsTo('explain')).toEqual([[sql, { qid: 'q2', tabId: 't1', params }]]);
+    // History keeps the statement as typed, never the values.
+    const history = (await call('GET', `/history/${connection.id}`)).body as HistoryEntry[];
+    expect(history.map((e) => e.sql)).toEqual([sql, sql]);
+
+    expect((await call('POST', `/sessions/${sid}/queries`, { ...run, params: [42] })).status).toBe(400);
+    expect((await call('POST', `/sessions/${sid}/queries`, { ...run, params: 'x' })).status).toBe(400);
+    expect((await call('POST', `/sessions/${sid}/explain`, { ...run, params: Array(101).fill('1') })).status).toBe(400);
+    expect(session.callsTo('runQuery')).toHaveLength(1);
+    expect(session.callsTo('explain')).toHaveLength(1);
+  });
 });
 
 describe('monitoring routes', () => {

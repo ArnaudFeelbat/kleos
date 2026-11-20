@@ -175,6 +175,36 @@ describe('Kleos over HTTP against Postgres', () => {
     expect(history[0]?.error).toMatch(/^42703 /);
   });
 
+  it('binds parameters, answers a missing value with 08P01 and finds the runs by search (0.7)', async () => {
+    const bound = await call('POST', `/sessions/${sid}/queries`, {
+      qid: 'q-params',
+      tabId: 'tab-1',
+      sql: 'select name from shop.customers where email = $1 or name is not distinct from $2 order by id',
+      params: ['grace@example.com', null],
+    });
+    expect(bound.status).toBe(200);
+    expect(QueryStarted.parse(bound.json).rows).toEqual([['Grace'], [null]]);
+
+    const missing = await call('POST', `/sessions/${sid}/queries`, {
+      qid: 'q-params-missing',
+      tabId: 'tab-1',
+      sql: 'select $1::int + $2::int',
+      params: ['1'],
+    });
+    expect(missing.status).toBe(400);
+    expect(missing.json).toEqual({
+      code: '08P01',
+      message: 'bind message supplies 1 parameters, but prepared statement "" requires 2',
+    });
+
+    const found = HistoryEntry.array().parse((await call('GET', '/history?q=bind%20message&outcome=error')).json);
+    expect(found.map((e) => e.sql)).toEqual(['select $1::int + $2::int']);
+    const ok = HistoryEntry.array().parse(
+      (await call('GET', `/history?q=customers%20email&connectionId=${connectionId}&outcome=ok`)).json,
+    );
+    expect(ok[0]?.sql).toMatch(/^select name from shop.customers where email = \$1/);
+  });
+
   it('cancels pg_sleep(60) within a second', async () => {
     const t0 = Date.now();
     const running = call('POST', `/sessions/${sid}/queries`, {

@@ -225,3 +225,148 @@ describe('sqlite app store', () => {
     }
   });
 });
+
+describe('sqlite app store, 0.7', () => {
+  it('keeps the parameter values of a saved query: absent keeps, null clears, an object replaces', () => {
+    store = createSqliteStore(':memory:');
+    const { id: connectionId } = store.createConnection(config, false);
+    const base = { connectionId, name: 'orders of', sql: 'select * from orders where customer_id = $1', chart: null };
+
+    const plain = store.createSavedQuery(base);
+    expect(plain.paramValues).toBeNull();
+
+    const saved = store.createSavedQuery({ ...base, name: 'with values', paramValues: { $1: '42', ':note': null } });
+    expect(saved.paramValues).toEqual({ $1: '42', ':note': null });
+    expect(store.getSavedQuery(saved.id)?.paramValues).toEqual({ $1: '42', ':note': null });
+    expect(store.listSavedQueries(connectionId).find((q) => q.id === saved.id)?.paramValues).toEqual({
+      $1: '42',
+      ':note': null,
+    });
+
+    // A rename that says nothing of parameters keeps them.
+    expect(store.updateSavedQuery(saved.id, { ...base, name: 'renamed' }).paramValues).toEqual({
+      $1: '42',
+      ':note': null,
+    });
+    expect(store.updateSavedQuery(saved.id, { ...base, paramValues: { $1: '7' } }).paramValues).toEqual({ $1: '7' });
+    expect(store.updateSavedQuery(saved.id, { ...base, paramValues: null }).paramValues).toBeNull();
+    expect(store.updateSavedQuery(saved.id, base).paramValues).toBeNull();
+  });
+
+  it('reads unreadable stored parameter values as none', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'kleos-store-params-'));
+    try {
+      const path = join(dir, 'app.db');
+      store = createSqliteStore(path);
+      const { id: connectionId } = store.createConnection(config, false);
+      const saved = store.createSavedQuery({ connectionId, name: 'q', sql: 'select $1', chart: null });
+      store.close();
+      const raw = new Database(path);
+      raw.prepare('UPDATE saved_queries SET param_values = ? WHERE id = ?').run('{"$1": 5', saved.id);
+      raw.close();
+      store = createSqliteStore(path);
+      expect(store.getSavedQuery(saved.id)?.paramValues).toBeNull();
+    } finally {
+      store?.close();
+      store = null;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('stores snippets sorted by name ignoring case, unique whatever the case', () => {
+    store = createSqliteStore(':memory:');
+    const s = store;
+    const top = s.createSnippet({ name: 'top 10', body: 'select * from $table limit 10' });
+    s.createSnippet({ name: 'Active locks', body: 'select * from pg_locks' });
+    s.createSnippet({ name: 'blocking', body: 'select pg_blocking_pids(pid) from pg_stat_activity' });
+    expect(s.listSnippets().map((x) => x.name)).toEqual(['Active locks', 'blocking', 'top 10']);
+    expect(top).toMatchObject({ id: expect.any(String), name: 'top 10', createdAt: expect.any(String) });
+    expect(top.updatedAt).toBe(top.createdAt);
+
+    const conflict = (work: () => unknown) => {
+      try {
+        work();
+      } catch (err) {
+        return err as KleosError;
+      }
+      throw new Error('expected a conflict');
+    };
+    const dup = conflict(() => s.createSnippet({ name: 'TOP 10', body: '' }));
+    expect(dup.status).toBe(409);
+    expect(dup.body).toMatchObject({ code: 'KLEOS_VALIDATION', message: 'A snippet named "top 10" already exists' });
+    // Beyond ASCII too, where SQLite's NOCASE stops.
+    s.createSnippet({ name: 'Écritures', body: '' });
+    expect(conflict(() => s.createSnippet({ name: 'écritures', body: '' })).status).toBe(409);
+
+    // Renaming to its own name in another case is fine; to another snippet's name is not.
+    const renamed = s.updateSnippet(top.id, { name: 'Top 10', body: 'select 1' });
+    expect(renamed).toMatchObject({ id: top.id, name: 'Top 10', body: 'select 1', createdAt: top.createdAt });
+    expect(conflict(() => s.updateSnippet(top.id, { name: 'BLOCKING', body: '' })).status).toBe(409);
+    expect(conflict(() => s.updateSnippet('nope', { name: 'x', body: '' })).status).toBe(404);
+
+    s.deleteSnippet(top.id);
+    s.deleteSnippet('nope');
+    expect(s.listSnippets().map((x) => x.name)).toEqual(['Active locks', 'blocking', 'Écritures']);
+    // The name is free again.
+    expect(s.createSnippet({ name: 'top 10', body: '' }).name).toBe('top 10');
+  });
+
+  it('migrates a version 3 database, keeping its history searchable and its saved queries', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'kleos-store-v3-'));
+    try {
+      const path = join(dir, 'app.db');
+      // A database as 0.6 left it: migrations 1 to 3, a favorite, two runs and a saved query.
+      const v3 = new Database(path);
+      v3.exec('CREATE TABLE schema_version (version INTEGER NOT NULL)');
+      for (const m of migrations.filter((m) => m.version <= 3)) {
+        v3.exec(m.sql);
+        v3.prepare('INSERT INTO schema_version (version) VALUES (?)').run(m.version);
+      }
+      v3.prepare(
+        `INSERT INTO connections (id, nickname, host, port, user, database, ssl_mode, color, read_only, has_password, created_at, updated_at)
+         VALUES ('c1', 'shop_dev', 'localhost', 5432, 'kleos', 'shop_dev', 'prefer', 'none', 0, 0, 't', 't')`,
+      ).run();
+      const addRun = v3.prepare(
+        `INSERT INTO history (id, connection_id, sql, kind, ran_at, elapsed_ms, row_count, error, cancelled)
+         VALUES (?, 'c1', ?, 'query', ?, 1, 1, ?, 0)`,
+      );
+      addRun.run('h1', 'select * from invoices', '2026-11-01T10:00:00.000Z', null);
+      // Same ranAt: the later insert stays first, as before the migration.
+      addRun.run('h2', 'select nope from invoices', '2026-11-01T10:00:00.000Z', '42703 column "nope" does not exist');
+      v3.prepare(`INSERT INTO saved_queries VALUES ('s1', 'c1', 'all invoices', 'select 1', NULL, 't', 't')`).run();
+      v3.close();
+
+      store = createSqliteStore(path);
+      expect(store.listHistory('c1').map((e) => e.id)).toEqual(['h2', 'h1']);
+      expect(store.searchHistory({ q: 'invoices', limit: 200 }).map((e) => e.id)).toEqual(['h2', 'h1']);
+      expect(store.searchHistory({ q: 'nope exist', limit: 200 }).map((e) => e.id)).toEqual(['h2']);
+      expect(store.getSavedQuery('s1')).toMatchObject({ name: 'all invoices', paramValues: null });
+      expect(store.listSnippets()).toEqual([]);
+      // Runs added after the migration are indexed too.
+      store.addHistory('c1', {
+        sql: 'select * from invoices limit 5',
+        kind: 'query',
+        ranAt: '2026-11-02T10:00:00.000Z',
+        elapsedMs: 1,
+        rowCount: 5,
+        error: null,
+        cancelled: false,
+      });
+      expect(store.searchHistory({ q: 'invoices limit', limit: 200 })).toHaveLength(1);
+      store.deleteConnection('c1');
+      expect(store.searchHistory({ q: 'invoices', limit: 200 })).toEqual([]);
+      store.close();
+      store = null;
+
+      // The cascade went through the triggers: the index itself holds nothing of those runs.
+      const check = new Database(path);
+      expect(check.prepare(`SELECT rowid FROM history_fts WHERE history_fts MATCH 'invoices'`).all()).toEqual([]);
+      check.prepare(`INSERT INTO history_fts (history_fts) VALUES ('integrity-check')`).run();
+      check.close();
+    } finally {
+      store?.close();
+      store = null;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

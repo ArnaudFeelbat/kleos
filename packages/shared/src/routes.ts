@@ -56,8 +56,8 @@
  *   DELETE /ssh-known-hosts/:host/:port              -> 204 (forget a trusted SSH host key)            (0.4)
  *   GET    /history?q=&connectionId=&outcome=&limit= -> HistoryEntry[] (search, all servers; newest first) (0.7)
  *   GET    /snippets                                 -> Snippet[] (by name)                              (0.7)
- *   POST   /snippets             SnippetInput        -> Snippet                                           (0.7)
- *   PUT    /snippets/:id         SnippetInput        -> Snippet                                           (0.7)
+ *   POST   /snippets             SnippetInput        -> Snippet (409 KLEOS_VALIDATION: name taken, any case) (0.7)
+ *   PUT    /snippets/:id         SnippetInput        -> Snippet (404 unknown id; 409 as on POST)          (0.7)
  *   DELETE /snippets/:id                             -> 204                                               (0.7)
  *   GET    /history/:connectionId?limit=200          -> HistoryEntry[] (newest first)
  *   POST   /history/:connectionId NewHistoryEntry    -> HistoryEntry

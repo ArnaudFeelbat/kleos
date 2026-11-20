@@ -60,6 +60,11 @@ export type QueryOptions = {
   /** Query tab; each tab gets one dedicated client so transactions and cancel behave predictably. */
   tabId: string;
   pageSize: number;
+  /**
+   * Bind values for $1…$n (0.7), sent as untyped text so Postgres infers each type from its
+   * use; null is SQL NULL. Absent or empty: the statement is sent without parameters.
+   */
+  params?: (string | null)[];
 };
 
 export interface Session {
