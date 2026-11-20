@@ -1,11 +1,11 @@
-import { statementAt } from '@kleos/shared';
+import { statementAtOffset } from './sql-script';
 
 /** The SQL a Run or Explain sends, and where it sits in the editor document. */
 export type RunTarget = { sql: string; from: number; to: number };
 
 /**
  * What Run executes: the selection when there is one (trimmed, without a trailing
- * semicolon), else the statement under the cursor (statementAt). Null when the editor
+ * semicolon), else the statement under the cursor (statementAtOffset). Null when the editor
  * holds nothing to run.
  */
 export function runTarget(doc: string, selection: { from: number; to: number }): RunTarget | null {
@@ -18,7 +18,7 @@ export function runTarget(doc: string, selection: { from: number; to: number }):
     while (body.endsWith(';')) body = body.slice(0, -1).trimEnd();
     if (body !== '') return { sql: body, from: from + lead, to: from + lead + body.length };
   }
-  const stmt = statementAt(doc, selection.to);
+  const stmt = statementAtOffset(doc, selection.to);
   return stmt ? { sql: stmt.text, from: stmt.from, to: stmt.to } : null;
 }
 

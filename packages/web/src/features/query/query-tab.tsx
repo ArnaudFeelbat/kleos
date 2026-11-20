@@ -9,6 +9,7 @@ import {
   Copy,
   Info,
   ListTree,
+  ListVideo,
   LoaderCircle,
   PanelRight,
   Play,
@@ -16,6 +17,7 @@ import {
   Save,
   Square,
   Table2,
+  WandSparkles,
   X,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
@@ -43,33 +45,65 @@ import { defaultChartSettings } from './chart-data';
 import { ChartView } from './chart-view';
 import { errorRange, lineColumn } from './error-position';
 import { ExplainView } from './explain-view';
+import { formatInEditor } from './format-sql';
 import { NameDialog } from './name-dialog';
+import { ParamDialog } from './param-dialog';
+import { placeholderKeys, type ParamValues } from './params';
 import { ResultsExportMenu, ResultsView } from './results-view';
 import { lineSpan, runTarget, type RunTarget } from './run-target';
 import { buildSqlNamespace } from './schema-completion';
+import { ScriptList } from './script-results';
 import { SidePanel } from './side-panel';
 import { SqlEditor, type ErrorMark } from './sql-editor';
+import { splitScript, type ScriptStatement } from './sql-script';
 import {
   addTab,
   cancelRunning,
   closeTab,
   getTab,
   historyLoadsDirectly,
+  isBusy,
   isDirty,
   loadMore,
   openDraft,
   openSavedQuery,
   runExplain,
   runQuery,
+  runScript,
+  selectScriptStep,
   setActiveTab,
+  shownRun,
+  shownStep,
+  takeTabAction,
   updateTab,
   useQueryWorkspace,
   type QueryTabState,
   type ResultView,
+  type ScriptState,
+  type ScriptStep,
 } from './store';
 
 const isMac = typeof navigator !== 'undefined' && /Mac/.test(navigator.platform);
-const keys = isMac ? { run: '⌘↵', explain: '⌘E', save: '⌘S' } : { run: 'Ctrl+↵', explain: 'Ctrl+E', save: 'Ctrl+S' };
+const keys = isMac
+  ? { run: '⌘↵', runAll: '⇧⌘↵', explain: '⌘E', save: '⌘S', format: '⇧⌥F' }
+  : { run: 'Ctrl+↵', runAll: 'Shift+Ctrl+↵', explain: 'Ctrl+E', save: 'Ctrl+S', format: 'Shift+Alt+F' };
+
+/** What Run, Run all and Explain hand to the parameter prompt, then execute. */
+type Launch =
+  | { kind: 'run'; target: RunTarget }
+  | { kind: 'explain'; target: RunTarget }
+  | { kind: 'script'; statements: ScriptStatement[] };
+
+type ParamPrompt = { launch: Launch; keys: string[]; tabId: string };
+
+function launchKeys(launch: Launch): string[] {
+  return placeholderKeys(launch.kind === 'script' ? launch.statements.map((s) => s.text) : launch.target.sql);
+}
+
+function sameValues(a: ParamValues, b: ParamValues): boolean {
+  const ka = Object.keys(a);
+  return ka.length === Object.keys(b).length && ka.every((k) => k in b && a[k] === b[k]);
+}
 
 /** Ticks while `active`, so elapsed times count up during a run. */
 function useNow(active: boolean): number {
@@ -87,16 +121,32 @@ function useNow(active: boolean): number {
   return now;
 }
 
-/** Underline range for an error with a position, relative to the statement that ran. */
-function errorMarkOf(error: ApiErrorBody | null | undefined, target: RunTarget | undefined): ErrorMark | null {
-  if (!error || !target || error.position === undefined) return null;
+/**
+ * Underline range for an error with a position, relative to the statement that ran. A Run all
+ * error without one marks its statement's first line, so the failing statement of a long
+ * script is easy to find.
+ */
+function errorMarkOf(
+  error: ApiErrorBody | null | undefined,
+  target: RunTarget | undefined,
+  step?: ScriptStep,
+): ErrorMark | null {
+  if (!error || !target) return null;
+  const message = `${error.code} ${error.message}`;
+  if (error.position === undefined) {
+    if (!step) return null;
+    const lineEnd = step.target.sql.indexOf('\n', step.codeFrom - step.target.from);
+    const to = lineEnd === -1 ? step.target.to : step.target.from + lineEnd;
+    return { from: step.codeFrom, to: Math.max(to, step.codeFrom + 1), message };
+  }
   const r = errorRange(target.sql, 0, target.sql, error.position);
-  return { from: target.from + r.from, to: target.from + r.to, message: `${error.code} ${error.message}` };
+  return { from: target.from + r.from, to: target.from + r.to, message };
 }
 
 /** The tab's chart settings, or the ones derived from its result when the user has not picked any. */
 function effectiveChart(tab: QueryTabState): ChartSettings | null {
-  return tab.chart ?? (tab.run?.status === 'done' ? defaultChartSettings(tab.run.columns) : null);
+  const run = shownRun(tab);
+  return tab.chart ?? (run?.status === 'done' ? defaultChartSettings(run.columns) : null);
 }
 
 /**
@@ -137,13 +187,80 @@ export function QueryTab() {
     const sel = view ? view.state.selection.main : { from: doc.length, to: doc.length };
     return runTarget(doc, sel);
   };
+
+  // ---- running, through the parameter prompt when the SQL has placeholders ----------
+  const [paramPrompt, setParamPrompt] = useState<ParamPrompt | null>(null);
+
+  /** Stores the values a successful run used on the saved query the tab came from. */
+  const rememberValues = async (tabId: string, values: ParamValues) => {
+    const savedId = getTab(sid, tabId)?.saved?.id;
+    if (!savedId) return;
+    try {
+      // Fresh from the server, so only the values change (never with SQL still being edited here).
+      const all = await queryClient.fetchQuery({
+        queryKey: queryKeys.savedQueries(connectionId),
+        queryFn: () => api.savedQueries(connectionId),
+      });
+      const q = all.find((x) => x.id === savedId);
+      if (!q) return;
+      const paramValues = { ...q.paramValues, ...values };
+      if (sameValues(paramValues, q.paramValues ?? {})) return;
+      await api.updateSavedQuery(q.id, {
+        connectionId: q.connectionId,
+        name: q.name,
+        sql: q.sql,
+        chart: q.chart,
+        paramValues,
+      });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.savedQueries(connectionId) });
+    } catch (err) {
+      toast.error(`Couldn’t remember the parameter values: ${errorText(err)}`);
+    }
+  };
+
+  const execute = async (l: Launch, tabId: string, values: ParamValues, used: string[]) => {
+    if (l.kind === 'explain') {
+      await runExplain(sid, tabId, l.target, refreshHistory, values);
+      return;
+    }
+    const outcome =
+      l.kind === 'run'
+        ? (await runQuery(sid, tabId, l.target, refreshHistory, values))?.status
+        : (await runScript(sid, tabId, l.statements, values, refreshHistory))?.status;
+    if (outcome === 'done' && used.length > 0) await rememberValues(tabId, values);
+  };
+
+  /** Runs now, or asks for the placeholders' values first. */
+  const launch = (l: Launch, tabId = tab.id) => {
+    const t = getTab(sid, tabId);
+    if (!t || isBusy(t)) return;
+    const keys = launchKeys(l);
+    if (keys.length === 0) void execute(l, tabId, {}, []);
+    else setParamPrompt({ launch: l, keys, tabId });
+  };
+  const submitParams = (values: ParamValues) => {
+    const p = paramPrompt;
+    if (!p) return;
+    setParamPrompt(null);
+    updateTab(sid, p.tabId, (t) => ({ ...t, paramValues: { ...t.paramValues, ...values } }));
+    void execute(p.launch, p.tabId, values, p.keys);
+  };
+
   const run = () => {
     const target = currentTarget();
     if (!target) {
       toast('Nothing to run: write a statement first.');
       return;
     }
-    void runQuery(sid, tab.id, target, refreshHistory);
+    launch({ kind: 'run', target });
+  };
+  const runAll = () => {
+    const statements = splitScript(viewRef.current ? viewRef.current.state.doc.toString() : tab.sql);
+    if (statements.length === 0) {
+      toast('Nothing to run: write a statement first.');
+      return;
+    }
+    launch({ kind: 'script', statements });
   };
   const explain = () => {
     const target = currentTarget();
@@ -151,14 +268,54 @@ export function QueryTab() {
       toast('Nothing to explain: write a statement first.');
       return;
     }
-    void runExplain(sid, tab.id, target, refreshHistory);
+    launch({ kind: 'explain', target });
   };
   const cancel = () => {
     cancelRunning(sid, tab.id).catch((err: unknown) => toast.error(`Cancel failed: ${errorText(err)}`));
   };
+  const format = () => {
+    const view = viewRef.current;
+    if (!view) return;
+    const failure = formatInEditor(view);
+    if (failure) toast(failure);
+    view.focus();
+  };
+  const [viewTick, setViewTick] = useState(0);
   const onView = useCallback((view: EditorView | null) => {
     viewRef.current = view;
+    setViewTick((n) => n + 1);
   }, []);
+
+  // ---- actions from the ⌘K palette (rerun a saved query, insert a snippet) -----------
+  const doPending = useRef<(t: QueryTabState) => void>(() => {});
+  useEffect(() => {
+    doPending.current = (t) => {
+      // Inserting needs the editor: on a first visit, wait for it.
+      if (t.pending?.kind === 'insert' && !viewRef.current) return;
+      const action = takeTabAction(sid, t.id);
+      if (action?.kind === 'insert') {
+        const view = viewRef.current!;
+        const at = view.state.selection.main.head;
+        view.dispatch({
+          changes: { from: at, insert: action.text },
+          selection: { anchor: at + action.text.length },
+          userEvent: 'input.paste',
+          scrollIntoView: true,
+        });
+        view.focus();
+      } else if (action?.kind === 'run') {
+        // A saved query reruns whole: one statement as Run, several as Run all.
+        const statements = splitScript(t.sql);
+        const only = statements.length === 1 ? statements[0]! : null;
+        if (statements.length === 0) toast(`Nothing to run: “${t.title}” is empty.`);
+        else if (only) launch({ kind: 'run', target: { sql: only.text, from: only.from, to: only.to } }, t.id);
+        else launch({ kind: 'script', statements }, t.id);
+      }
+    };
+  });
+  useEffect(() => {
+    if (tab.pending) doPending.current(tab);
+  }, [tab, viewTick]);
 
   // ---- saving ------------------------------------------------------------------------
   const save = useMutation({
@@ -232,24 +389,33 @@ export function QueryTab() {
   };
 
   // ---- result header numbers --------------------------------------------------------
-  const runState = tab.run;
+  const script = tab.script;
+  const runState = shownRun(tab);
   const explainState = tab.explain;
-  const running = runState?.status === 'running' || explainState?.status === 'running';
+  const running = isBusy(tab);
   const now = useNow(running);
-  const startedAt = runState?.status === 'running' ? runState.startedAt : (explainState?.startedAt ?? 0);
+  const startedAt =
+    script?.status === 'running'
+      ? script.startedAt
+      : runState?.status === 'running'
+        ? runState.startedAt
+        : (explainState?.startedAt ?? 0);
   const elapsed = running && now > 0 ? Math.max(0, now - startedAt) : 0;
 
   const showingExplain = tab.view === 'explain';
+  const stepIndex = script ? shownStep(script) : -1;
+  const step = showingExplain ? undefined : script?.steps[stepIndex];
   const ranTarget = showingExplain ? explainState?.target : runState?.target;
   const markError = showingExplain ? explainState?.error : runState?.error;
-  const errorMark = useMemo(() => errorMarkOf(markError, ranTarget), [markError, ranTarget]);
+  const errorMark = useMemo(() => errorMarkOf(markError, ranTarget, step), [markError, ranTarget, step]);
   const ranRange = useMemo(() => (ranTarget ? { from: ranTarget.from, to: ranTarget.to } : null), [ranTarget]);
-  const errorLocation = errorMark
-    ? (() => {
-        const lc = lineColumn(tab.sql, errorMark.from);
-        return `Line ${lc.line}, column ${lc.column}`;
-      })()
-    : null;
+  const errorLocation = (() => {
+    if (!errorMark) return null;
+    const lc = lineColumn(tab.sql, errorMark.from);
+    if (!step || !script) return `Line ${lc.line}, column ${lc.column}`;
+    const where = markError?.position !== undefined ? `line ${lc.line}, column ${lc.column}` : `line ${step.line}`;
+    return `Statement ${stepIndex + 1} of ${script.steps.length} · ${where}`;
+  })();
 
   const copyCsv = async () => {
     if (runState?.status !== 'done') return;
@@ -325,7 +491,7 @@ export function QueryTab() {
                   >
                     <Icon data-tab-icon="" className="size-[13px]" aria-hidden="true" />
                     <span className="max-w-44 truncate">{t.title}</span>
-                    {(t.run?.status === 'running' || t.explain?.status === 'running') && (
+                    {isBusy(t) && (
                       <LoaderCircle className="text-brand-text size-3 animate-spin" role="img" aria-label="Running" />
                     )}
                     {dirty && (
@@ -376,6 +542,15 @@ export function QueryTab() {
             </TooltipTrigger>
             <TooltipContent>Run the selection, or the statement under the cursor ({keys.run})</TooltipContent>
           </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button type="button" variant="outline" size="sm" onClick={runAll} disabled={running}>
+                <ListVideo className="size-3.5" aria-hidden="true" />
+                Run all
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Run every statement in order, stopping at the first error ({keys.runAll})</TooltipContent>
+          </Tooltip>
           <Button type="button" variant="outline" size="sm" onClick={cancel} disabled={!running}>
             <Square className="size-3.5" aria-hidden="true" />
             Cancel
@@ -390,6 +565,14 @@ export function QueryTab() {
             <TooltipContent>EXPLAIN (ANALYZE, FORMAT JSON) — executes the statement ({keys.explain})</TooltipContent>
           </Tooltip>
           <span className="flex-1" />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button type="button" variant="outline" size="icon-sm" aria-label="Format SQL" onClick={format}>
+                <WandSparkles aria-hidden="true" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Format SQL: the selection, or the whole editor ({keys.format})</TooltipContent>
+          </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
               <Button type="button" variant="outline" size="sm" onClick={() => saveTab(tab)} disabled={save.isPending}>
@@ -427,7 +610,9 @@ export function QueryTab() {
             schema={namespace}
             defaultSchema={ws.currentSchema}
             onRun={run}
+            onRunAll={runAll}
             onExplain={explain}
+            onFormat={format}
             ranRange={ranRange}
             errorMark={errorMark}
             onView={onView}
@@ -482,13 +667,18 @@ export function QueryTab() {
               Copy as CSV
             </Button>
           )}
-          {tab.view === 'results' && runState?.status === 'done' && runState.columns.length > 0 && (
-            <ResultsExportMenu sql={runState.target.sql} />
-          )}
+          {tab.view === 'results' &&
+            runState?.status === 'done' &&
+            runState.columns.length > 0 &&
+            // The export reruns the SQL on its own, without bind values: not for statements with placeholders.
+            placeholderKeys(runState.target.sql).length === 0 && <ResultsExportMenu sql={runState.target.sql} />}
         </div>
 
         {/* Result body */}
         <div className="flex min-h-0 flex-1 flex-col">
+          {script && tab.view !== 'explain' && (
+            <ScriptList script={script} onSelect={(i) => selectScriptStep(sid, tab.id, i)} />
+          )}
           {tab.view === 'results' && (
             <ResultsView
               key={runState?.qid ?? 'none'}
@@ -528,6 +718,17 @@ export function QueryTab() {
         />
       )}
 
+      <ParamDialog
+        open={paramPrompt !== null}
+        keys={paramPrompt?.keys ?? []}
+        initial={(paramPrompt && getTab(sid, paramPrompt.tabId)?.paramValues) ?? {}}
+        action={
+          paramPrompt?.launch.kind === 'script' ? 'Run all' : paramPrompt?.launch.kind === 'explain' ? 'Explain' : 'Run'
+        }
+        description={paramPromptDescription(paramPrompt)}
+        onSubmit={submitParams}
+        onCancel={() => setParamPrompt(null)}
+      />
       <NameDialog
         open={saveDialogFor !== null}
         onOpenChange={(o) => !o && setSaveDialogFor(null)}
@@ -637,6 +838,7 @@ function ResultStatus({ tab, elapsed }: { tab: QueryTabState; elapsed: number })
       </>
     );
   }
+  if (tab.script) return <ScriptStatus script={tab.script} elapsed={elapsed} />;
   const run = tab.run;
   if (!run) return null;
   if (run.status === 'running') return <Running elapsed={elapsed} label="Running" />;
@@ -690,6 +892,53 @@ function Running({ elapsed, label }: { elapsed: number; label: string }) {
         {label}…
       </b>
       <span className="text-muted-foreground font-mono">{(elapsed / 1000).toFixed(1)} s</span>
+    </span>
+  );
+}
+
+function paramPromptDescription(p: ParamPrompt | null): string {
+  if (!p) return '';
+  const n = p.keys.length;
+  const params = `${n} parameter${n === 1 ? '' : 's'}`;
+  if (p.launch.kind !== 'script') return params;
+  const count = p.launch.statements.length;
+  return `${params} across ${count} statement${count === 1 ? '' : 's'}`;
+}
+
+/** Header of a Run all: progress while it runs, then how it ended. */
+function ScriptStatus({ script, elapsed }: { script: ScriptState; elapsed: number }) {
+  const total = script.steps.length;
+  const at = script.current + 1;
+  if (script.status === 'running') return <Running elapsed={elapsed} label={`Statement ${at} of ${total}`} />;
+  const time = <span className="text-muted-foreground">· {formatMs(script.elapsedMs ?? 0)}</span>;
+  if (script.status === 'error') {
+    return (
+      <span className="text-destructive inline-flex items-center gap-1.5 text-xs">
+        <CircleX className="size-3.5" aria-hidden="true" />
+        <b className="font-semibold">
+          Statement {at} of {total} failed
+        </b>
+        <span className="text-muted-foreground">· line {script.steps[script.current]!.line}</span>
+        {time}
+      </span>
+    );
+  }
+  if (script.status === 'cancelled') {
+    return (
+      <span className="text-muted-foreground inline-flex items-center gap-1.5 text-xs">
+        <CircleSlash className="size-3.5" aria-hidden="true" />
+        Cancelled at statement {at} of {total}
+        {time}
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs">
+      <CircleCheck className="text-success size-3.5" aria-hidden="true" />
+      <b className="tabular font-semibold">
+        {total} statement{total === 1 ? '' : 's'}
+      </b>
+      {time}
     </span>
   );
 }
