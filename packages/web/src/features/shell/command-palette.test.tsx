@@ -35,6 +35,7 @@ const bridge = {
   saveFileDialog: vi.fn(async () => null),
   openFileDialog: vi.fn(async () => null),
   revealInFinder: vi.fn(),
+  writeFile: vi.fn(async () => {}),
   appVersion: '0.5.0',
   windowKind: 'main' as const,
   getSettings: vi.fn(async () => defaultSettings),

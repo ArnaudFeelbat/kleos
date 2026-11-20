@@ -24,7 +24,15 @@ export type KleosBridge = {
   /** Applies and remembers the appearance; the page follows through prefers-color-scheme. */
   setAppearance(mode: Appearance): void;
   /** Native save dialog for an export; resolves to the chosen absolute path, or null when cancelled. (0.4) */
-  saveFileDialog(args: { defaultName: string; format: 'csv' | 'json' | 'xlsx' }): Promise<string | null>;
+  saveFileDialog(args: {
+    defaultName: string;
+    format: 'csv' | 'json' | 'xlsx' | 'png' | 'svg';
+  }): Promise<string | null>;
+  /**
+   * Writes a file the renderer produced (a diagram export). Only accepted for the last path
+   * the save dialog returned to this window; anything else rejects. (0.6)
+   */
+  writeFile(path: string, data: string | Uint8Array): Promise<void>;
   /**
    * Native open dialog; null when cancelled. (0.4)
    * `csv` for an import, `key` for an SSH private key (starts in ~/.ssh), `cert` for a CA file.

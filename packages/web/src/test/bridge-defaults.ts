@@ -62,6 +62,7 @@ export function mockBridge(
     saveFileDialog: vi.fn(async () => null),
     openFileDialog: vi.fn<KleosBridge['openFileDialog']>(async () => null),
     revealInFinder: vi.fn(),
+    writeFile: vi.fn(async () => {}),
     onCommand: vi.fn<KleosBridge['onCommand']>(() => () => {}),
     appVersion: '0.5.0',
     windowKind: options.windowKind ?? 'main',
