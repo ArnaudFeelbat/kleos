@@ -1,5 +1,5 @@
 import type { Column, Constraint, ForeignKey, Index, Table, TableRef } from '@kleos/shared';
-import { ArrowRight, ArrowUpRight, Code, Eye, KeyRound, Plus, Table2, X } from 'lucide-react';
+import { ArrowRight, ArrowUpRight, Code, Eye, KeyRound, LocateFixed, Plus, Table2, X } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -28,6 +28,8 @@ type Props = {
   onOpenTable(ref: TableRef): void;
   onViewData(): void;
   onOpenInQuery(): void;
+  /** Brings the table into view on the diagram: centered, all of it visible (0.7.1). */
+  onCenter?(): void;
 };
 
 /** "~1,204,380 rows (estimate) · 412 MB · 6 columns" */
@@ -85,7 +87,15 @@ function stagedColumnDetail(view: ColumnView): string {
  * Indexes titles, and the table menu in the header. Staged changes show inline: a ghost row for
  * an added column or index, "pending" on an altered column, "drop" on a dropped one.
  */
-export function TableDetailPanel({ table, foreignKeys, onClose, onOpenTable, onViewData, onOpenInQuery }: Props) {
+export function TableDetailPanel({
+  table,
+  foreignKeys,
+  onClose,
+  onOpenTable,
+  onViewData,
+  onOpenInQuery,
+  onCenter,
+}: Props) {
   const { readOnly } = useWorkspace();
   const editing = useTableEditing(table);
   const { overlay, editable, actions, openDialog } = editing;
@@ -127,6 +137,18 @@ export function TableDetailPanel({ table, foreignKeys, onClose, onOpenTable, onV
             {table.schema}
           </Badge>
           <span className="ml-auto flex shrink-0 items-center gap-0.5">
+            {onCenter && (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="text-muted-foreground"
+                aria-label="Center on table"
+                title="Center on table (F)"
+                onClick={onCenter}
+              >
+                <LocateFixed aria-hidden="true" />
+              </Button>
+            )}
             {editable && <TableActions editing={editing} />}
             <Button
               variant="ghost"

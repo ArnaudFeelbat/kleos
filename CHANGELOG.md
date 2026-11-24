@@ -1,5 +1,21 @@
 # Nouveautés de Kleos
 
+## Version 0.7.1 — 24 novembre 2026
+
+### Un diagramme qui vous montre la bonne table
+
+- **La table choisie arrive au centre, entière.** Quand vous choisissez une table dans la
+  barre latérale, dans la palette ⌘K ou avec « Focus a table… », le diagramme la place au
+  centre avec le bon niveau de zoom : toutes ses colonnes sont visibles, sans grossir
+  exagérément une petite table.
+- **Recentrer à tout moment.** Le nouveau bouton « Center on table », en haut du panneau de
+  détail, ou la touche **F**, ramène la table sélectionnée au centre.
+- **Tout revoir.** Le bouton « Fit to view », en bas à gauche avec les boutons de zoom,
+  affiche de nouveau toutes les tables d'un coup : il ne réagissait plus depuis la 0.6.
+- Le double-clic sur une table ouvre toujours ses données.
+
+---
+
 ## Version 0.7.0 — 20 novembre 2026
 
 ### Des scripts, pas seulement des requêtes

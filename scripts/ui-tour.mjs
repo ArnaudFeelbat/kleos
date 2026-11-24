@@ -43,7 +43,15 @@ let child;
 /** Starts the built app on the tour's own profile; called again to test the restored window. */
 function launch() {
   port = 9300 + Math.floor(Math.random() * 500);
-  child = spawn(electron, [appDir, `--remote-debugging-port=${port}`], {
+  // macOS hides a window covered by others: Chromium then stops its animation frames and slows
+  // its timers, so animated view moves (the diagram's framing) and toast timers would wait until
+  // the window shows again. The tour runs behind other windows, so keep it rendering.
+  const keepRendering = [
+    '--disable-backgrounding-occluded-windows',
+    '--disable-renderer-backgrounding',
+    '--disable-background-timer-throttling',
+  ];
+  child = spawn(electron, [appDir, `--remote-debugging-port=${port}`, ...keepRendering], {
     stdio: ['ignore', 'ignore', process.env.TOUR_VERBOSE ? 'inherit' : 'ignore'],
     env: {
       ...process.env,
@@ -98,16 +106,37 @@ async function connect(wsUrl) {
     ws.onerror = reject;
   });
   let id = 0;
+  // Every call settles: a page that goes away mid-call (a window closing itself) never answers,
+  // and a hung page shouldn't stall the tour for good either.
   const call = (method, params = {}) =>
     new Promise((resolve, reject) => {
       const msgId = ++id;
-      ws.addEventListener('message', function onMessage(event) {
+      const done = () => {
+        clearTimeout(timer);
+        ws.removeEventListener('message', onMessage);
+        ws.removeEventListener('close', onClose);
+      };
+      const timer = setTimeout(() => {
+        done();
+        reject(new Error(`${method}: no answer in 30 s`));
+      }, 30_000);
+      function onMessage(event) {
         const msg = JSON.parse(event.data);
         if (msg.id !== msgId) return;
-        ws.removeEventListener('message', onMessage);
+        done();
         if (msg.error) reject(new Error(`${method}: ${msg.error.message}`));
         else resolve(msg.result);
-      });
+      }
+      function onClose() {
+        done();
+        reject(new Error(`${method}: page closed`));
+      }
+      ws.addEventListener('message', onMessage);
+      ws.addEventListener('close', onClose);
+      if (ws.readyState !== WebSocket.OPEN) {
+        onClose();
+        return;
+      }
       ws.send(JSON.stringify({ id: msgId, method, params }));
     });
   const evaluate = async (expression) => {
@@ -308,6 +337,88 @@ try {
     await sleep(1200);
     await win.shot('05-schema-diagram');
   });
+  const nodeOf = (name) =>
+    `[...document.querySelectorAll('.react-flow__node')].find((n) => n.querySelector('span')?.textContent.trim() === ${JSON.stringify(name)})`;
+  const framing = (name) =>
+    win.evaluate(`(() => {
+      const flow = ${visible('.react-flow')}[0];
+      const pane = flow.getBoundingClientRect();
+      const node = ${nodeOf(name)}.getBoundingClientRect();
+      const zoom = new DOMMatrixReadOnly(getComputedStyle(flow.querySelector('.react-flow__viewport')).transform).a;
+      return {
+        dx: Math.round(node.x + node.width / 2 - (pane.x + pane.width / 2)),
+        dy: Math.round(node.y + node.height / 2 - (pane.y + pane.height / 2)),
+        inside: node.left >= pane.left && node.right <= pane.right && node.top >= pane.top && node.bottom <= pane.bottom,
+        zoom: Math.round(zoom * 100) / 100,
+      };
+    })()`);
+  const assertFramed = (g, how) => {
+    console.log(`  ${how}: dx ${g.dx}px, dy ${g.dy}px, zoom ${g.zoom}, fully visible ${g.inside}`);
+    if (Math.abs(g.dx) > 24 || Math.abs(g.dy) > 24) throw new Error(`${how}: not centered`);
+    if (!g.inside) throw new Error(`${how}: not fully visible`);
+    if (g.zoom > 1.25 + 1e-6) throw new Error(`${how}: zoom ${g.zoom} above 125 %`);
+  };
+  await step('a table picked in the sidebar is framed; F too; Fit to view shows all', async () => {
+    await win.click(
+      `[...${front}.querySelectorAll('button')].find((b) => b.textContent.trim().startsWith(${JSON.stringify(pgInfo.table)}))`,
+      'table in the sidebar',
+    );
+    await sleep(900);
+    assertFramed(await framing(pgInfo.table), 'sidebar pick');
+    await win.shot('05-schema-table-framed');
+
+    // The zoom controls sit in React Flow's overflow-hidden canvas, where the click helper's
+    // scrollIntoView shifts things: press them with plain mouse events at their centre instead.
+    const pressZoomButton = async (label) => {
+      const c = await win.evaluate(`(() => {
+        const b = [...document.querySelectorAll('button[aria-label=${JSON.stringify(label)}]')].find((x) => x.offsetParent !== null);
+        const r = b.getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+      })()`);
+      await win.call('Input.dispatchMouseEvent', { type: 'mouseMoved', x: c.x, y: c.y });
+      await win.call('Input.dispatchMouseEvent', {
+        type: 'mousePressed',
+        x: c.x,
+        y: c.y,
+        button: 'left',
+        clickCount: 1,
+      });
+      await win.call('Input.dispatchMouseEvent', {
+        type: 'mouseReleased',
+        x: c.x,
+        y: c.y,
+        button: 'left',
+        clickCount: 1,
+      });
+      await sleep(450);
+    };
+    const zoomNow = () =>
+      win.evaluate(`new DOMMatrixReadOnly(getComputedStyle(${visible('.react-flow__viewport')}[0]).transform).a`);
+
+    // Zoom out, then F frames the table again.
+    await pressZoomButton('Zoom out');
+    await pressZoomButton('Zoom out');
+    const zoomedOut = await zoomNow();
+    if (!(zoomedOut < 1)) throw new Error(`Zoom out did not zoom out (zoom ${zoomedOut})`);
+    await win.key('f', 'KeyF', 70);
+    await sleep(900);
+    assertFramed(await framing(pgInfo.table), 'F');
+
+    // The zoom controls' Fit to view shows every table of this diagram again.
+    await pressZoomButton('Fit to view');
+    await sleep(500);
+    const all = await win.evaluate(`(() => {
+      const flow = ${visible('.react-flow')}[0];
+      const pane = flow.getBoundingClientRect();
+      return [...flow.querySelectorAll('.react-flow__node')].every((n) => {
+        const r = n.getBoundingClientRect();
+        return r.left >= pane.left && r.right <= pane.right && r.top >= pane.top && r.bottom <= pane.bottom;
+      });
+    })()`);
+    console.log(`  Fit to view: every table visible ${all}, zoom ${Math.round((await zoomNow()) * 100) / 100}`);
+    if (!all) throw new Error('Fit to view did not show every table');
+    await win.shot('05-schema-fit-all');
+  });
   await step('stage a new table, read its exact SQL, apply it', async () => {
     const field = (label) => `document.querySelector('[role=dialog] [aria-label=${JSON.stringify(label)}]')`;
     await win.click(`${visible('button')}.find((b) => b.textContent.trim().startsWith('New table'))`, 'New table…');
@@ -426,7 +537,9 @@ try {
       `[...document.querySelectorAll('[role=menu] [role=menuitem]')].find((i) => i.textContent.trim().startsWith('CSV'))`,
       'CSV',
     );
-    await win.waitFor(toast('Exported'), 'export done toast', 20000);
+    // The file's own toast: the diagram's "Exported diagram to …" may still be stacked (toast
+    // timers pause while the tour's window is hidden).
+    await win.waitFor(toast(`to ${pgInfo.table}.csv`), 'export done toast', 20000);
     await sleep(300);
     await win.shot('06b-export-done');
     const csv = readFileSync(join(filesDir, `${pgInfo.table}.csv`), 'utf8');
