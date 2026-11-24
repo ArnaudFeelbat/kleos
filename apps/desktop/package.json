@@ -1,7 +1,7 @@
 {
   "name": "@kleos/desktop",
   "productName": "Kleos",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "license": "MIT",
   "private": true,
   "description": "A personal Postgres client for the Mac",

@@ -10,8 +10,10 @@ import {
   ReactFlow,
   ReactFlowProvider,
   useNodesInitialized,
+  getViewportForBounds,
   useReactFlow,
   type Edge,
+  type Rect,
   type NodeChangeset,
   type NodeTypes,
 } from '@xyflow/react';
@@ -27,7 +29,7 @@ import {
   Search,
   Waypoints,
 } from 'lucide-react';
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -81,11 +83,41 @@ export function SchemaTab() {
   );
 }
 
+/**
+ * How a table brought into focus is framed: all of it, centered, with a margin; zoomed out as
+ * far as a long table needs, never magnified past 125 % (a small table would fill the screen).
+ */
+// React Flow 13 reads a plain number of padding as pixels (v12 read it as a fraction): say %.
+export const TABLE_FOCUS = { padding: '10%', maxZoom: 1.25 } as const;
+
+const MIN_ZOOM = 0.1;
+const MAX_ZOOM = 2;
+
+/**
+ * The viewport that shows `bounds` (flow coordinates) centered in a pane of that size, with the
+ * padding and a zoom cap. Applied with setViewport, which moves the view at once: React Flow 13's
+ * fitView only queues the move until the next nodes update, so on our controlled nodes it never
+ * ran for F or Fit to view (only when a selection happened to redraw the nodes).
+ */
+type FramingOptions = { padding: `${number}%`; maxZoom: number };
+
+export function framingViewport(
+  bounds: Rect,
+  pane: { width: number; height: number },
+  { padding, maxZoom }: FramingOptions,
+) {
+  return getViewportForBounds(bounds, pane.width, pane.height, MIN_ZOOM, maxZoom, padding);
+}
+
+/** Fit to view: the zoom controls' button that shows every table (up to the diagram's max zoom). */
+const FIT_ALL = { padding: '7%', maxZoom: MAX_ZOOM } as const;
+
 function ErDiagram({ model, schema }: { model: SchemaModel; schema: string }) {
   const ws = useWorkspace();
   const { connection, selectedTable, openTable, openInQuery, activeTab, visible } = ws;
   const queryClient = useQueryClient();
-  const { fitView, zoomIn, zoomOut, setCenter, getInternalNode } = useReactFlow<TableFlowNode>();
+  const { fitView, zoomIn, zoomOut, getNodesBounds, getNodes, setViewport } = useReactFlow<TableFlowNode>();
+  const paneRef = useRef<HTMLElement>(null);
 
   const selectedKey = selectedTable && selectedTable.schema === schema ? tableKey(selectedTable) : null;
   const tableCount = useMemo(() => model.tables.filter((t) => t.schema === schema).length, [model, schema]);
@@ -174,27 +206,99 @@ function ErDiagram({ model, schema }: { model: SchemaModel; schema: string }) {
     },
     [openTable],
   );
+  const centerSelected = useCallback(() => {
+    if (selectedKey) setFocusRequest((r) => ({ id: selectedKey, n: (r?.n ?? 0) + 1 }));
+  }, [selectedKey]);
+
+  // A table selected from outside the diagram (sidebar, ⌘K) while the diagram is in front is
+  // brought into view; a click on a table in the diagram leaves the view where it is.
+  const clickedKey = useRef<string | null>(null);
+  const diagramInFront = visible && activeTab === 'schema';
+  useEffect(() => {
+    if (!selectedKey || limited || !diagramInFront) return;
+    if (clickedKey.current === selectedKey) {
+      clickedKey.current = null;
+      return;
+    }
+    setFocusRequest((r) => ({ id: selectedKey, n: (r?.n ?? 0) + 1 }));
+    // Only selection changes matter here, not the tab coming to the front.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedKey, limited]);
+
+  // F centers the selected table, like the detail panel's button.
+  useEffect(() => {
+    if (!diagramInFront || !selectedKey) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'f' || e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return;
+      e.preventDefault();
+      centerSelected();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [diagramInFront, selectedKey, centerSelected]);
+
   // In neighbour-only mode every selection redraws the diagram, so it is centered too.
   const centerOn = limited ? selectedKey : (focusRequest?.id ?? null);
   const centerKey = centerOn ? `${centerOn}#${focusRequest?.n ?? 0}` : null;
+  // React Flow hands out new helper functions whenever the viewport moves; read them through a
+  // ref so only a new focus request (centerKey) frames a table — not every zoom, which would snap
+  // the view back onto the last focused table.
+  const flow = useRef({ getNodesBounds, getNodes, setViewport });
+  useLayoutEffect(() => {
+    flow.current = { getNodesBounds, getNodes, setViewport };
+  });
+  // Set once the view has been framed, by the first drawing or by anything else.
+  const firstFitDone = useRef(false);
+  /**
+   * Moves the view to show `bounds`, centered, at once (animated). False when it can't yet:
+   * the pane or the tables have no size (React Flow re-measures nodes after each redraw).
+   */
+  const frame = useCallback((bounds: Rect, options: FramingOptions): boolean => {
+    const box = paneRef.current?.getBoundingClientRect();
+    if (!box?.width || !box.height || !bounds.width || !bounds.height) return false;
+    firstFitDone.current = true;
+    void flow.current.setViewport(framingViewport(bounds, box, options), { duration: 300 });
+    return true;
+  }, []);
+  // The first drawing shows every table, never magnified past 100 %. Immediate, like every
+  // other framing: a queued fitView here would fire on the next nodes update — typically the
+  // first selection — and undo that selection's framing. Skipped once anything framed the
+  // view (a table picked before the diagram finished measuring, F, Fit to view).
+  const initialized = useNodesInitialized();
+  useEffect(() => {
+    if (!initialized || firstFitDone.current) return;
+    const ids = flow.current.getNodes().map((n) => n.id);
+    if (ids.length === 0) return;
+    firstFitDone.current = true;
+    const bounds = flow.current.getNodesBounds(ids);
+    const box = paneRef.current?.getBoundingClientRect();
+    if (box?.width && box.height && bounds.width && bounds.height) {
+      void flow.current.setViewport(framingViewport(bounds, box, { padding: FIT_ALL.padding, maxZoom: 1 }));
+    }
+  }, [initialized]);
+  const fitAll = useCallback(() => {
+    // By id, so React Flow measures from its internal nodes: our controlled node objects carry
+    // no size, and their bounds would cover only the tables' top-left corners.
+    const ids = flow.current.getNodes().map((n) => n.id);
+    if (ids.length > 0) frame(flow.current.getNodesBounds(ids), FIT_ALL);
+  }, [frame]);
   useEffect(() => {
     if (!centerOn || !centerKey) return;
-    let frame = 0;
+    // Timers, not animation frames: Electron pauses frames for a window behind others, and a
+    // table picked there should still be framed. Retried until the table has its size again
+    // (a selection redraws the nodes, which React Flow then re-measures), for up to ~2 s.
+    let timer: ReturnType<typeof setTimeout> | undefined;
     let tries = 0;
     const attempt = () => {
-      const node = getInternalNode(centerOn);
-      const width = node?.measured.width;
-      const height = node?.measured.height;
-      if (node && width && height) {
-        const { x, y } = node.internals.positionAbsolute;
-        void setCenter(x + width / 2, y + height / 2, { zoom: 1, duration: 300 });
-      } else if (tries++ < 30) {
-        frame = requestAnimationFrame(attempt);
-      }
+      if (frame(flow.current.getNodesBounds([centerOn]), TABLE_FOCUS)) return;
+      if (tries++ < 80) timer = setTimeout(attempt, 25);
     };
-    attempt();
-    return () => cancelAnimationFrame(frame);
-  }, [centerOn, centerKey, getInternalNode, setCenter]);
+    // A short wait first: selecting may have just opened the detail panel, narrowing the canvas.
+    timer = setTimeout(attempt, 50);
+    return () => clearTimeout(timer);
+  }, [centerOn, centerKey, frame]);
 
   // --- Detail panel: follows the selection; Escape or the close button hides it. ---
   const selectedRelation = selectedKey ? findRelation(model, selectedTable) : undefined;
@@ -215,7 +319,7 @@ function ErDiagram({ model, schema }: { model: SchemaModel; schema: string }) {
       setPositions((p) => ({ ...p, ...placed }));
       latest.current = { ...latest.current, ...placed };
       flushSave();
-      requestAnimationFrame(() => void fitView({ padding: 0.15, duration: 300 }));
+      requestAnimationFrame(() => void fitView({ padding: FIT_ALL.padding, duration: 300 }));
     } catch (err) {
       toast.error('Automatic layout failed', { description: errorText(err) });
     }
@@ -235,7 +339,7 @@ function ErDiagram({ model, schema }: { model: SchemaModel; schema: string }) {
         <ExportDiagramMenu graph={graph} schema={schema} />
       </TabToolbar>
 
-      <section aria-label="ER diagram" className="kleos-er relative min-w-0 flex-1">
+      <section ref={paneRef} aria-label="ER diagram" className="kleos-er relative min-w-0 flex-1">
         <ReactFlow<TableFlowNode, Edge>
           nodes={nodes}
           edges={edges}
@@ -243,6 +347,7 @@ function ErDiagram({ model, schema }: { model: SchemaModel; schema: string }) {
           onNodesChange={onNodesChange}
           onNodeClick={(_, node) => {
             setClosedFor(null);
+            clickedKey.current = node.id;
             openTable(node.data.table);
           }}
           onNodeDoubleClick={(_, node) => openTable(node.data.table, 'data')}
@@ -257,12 +362,11 @@ function ErDiagram({ model, schema }: { model: SchemaModel; schema: string }) {
           nodesConnectable={false}
           edgesFocusable={false}
           deleteKeyCode={null}
-          minZoom={0.1}
-          maxZoom={2}
+          minZoom={MIN_ZOOM}
+          maxZoom={MAX_ZOOM}
           proOptions={{ hideAttribution: true }}
         >
           <Background variant={BackgroundVariant.Dots} gap={18} size={1} />
-          <FitOnFirstLayout />
           <Panel position="top-right">
             <Legend />
           </Panel>
@@ -285,7 +389,7 @@ function ErDiagram({ model, schema }: { model: SchemaModel; schema: string }) {
               <ZoomButton label="Zoom out" onClick={() => void zoomOut({ duration: 200 })}>
                 <Minus />
               </ZoomButton>
-              <ZoomButton label="Fit to view" onClick={() => void fitView({ padding: 0.15, duration: 300 })} last>
+              <ZoomButton label="Fit to view" onClick={fitAll} last>
                 <Maximize />
               </ZoomButton>
             </div>
@@ -331,6 +435,7 @@ function ErDiagram({ model, schema }: { model: SchemaModel; schema: string }) {
           }}
           onViewData={() => openTable(selectedRelation, 'data')}
           onOpenInQuery={() => openInQuery(selectStarSql(selectedRelation))}
+          onCenter={centerSelected}
         />
       )}
     </div>
@@ -391,19 +496,6 @@ function toFlowEdges(graph: ErGraph, selectedKey: string | null): Edge[] {
 }
 
 /** Fits the viewport once, when the first nodes have been measured. */
-function FitOnFirstLayout() {
-  const initialized = useNodesInitialized();
-  const { fitView } = useReactFlow();
-  const done = useRef(false);
-  useEffect(() => {
-    if (initialized && !done.current) {
-      done.current = true;
-      void fitView({ padding: 0.15, maxZoom: 1 });
-    }
-  }, [initialized, fitView]);
-  return null;
-}
-
 function ZoomButton({
   label,
   onClick,
