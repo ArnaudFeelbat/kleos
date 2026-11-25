@@ -136,6 +136,10 @@ export function buildPaletteEntries(input: PaletteInput): PaletteEntry[] {
   const { tabs, active, favorites, schemas, saved = {}, snippets = [], appearance, colorOf, mod } = input;
   const entries: PaletteEntry[] = [];
   const front = tabs.find((t) => t.sid === active);
+  // A restored tab still waiting for its session has no workspace: an intent sent to its placeholder
+  // id would never apply (the tab gets a new sid once connected), so the workspace actions below
+  // (snippets, Go to…, Refresh schema, Search history…) are offered only for a connected server.
+  const workspace = front?.restore ? undefined : front;
 
   tabs.forEach((t, i) => {
     entries.push({
@@ -192,7 +196,7 @@ export function buildPaletteEntries(input: PaletteInput): PaletteEntry[] {
     }
   }
 
-  if (front) {
+  if (workspace) {
     for (const s of snippets) {
       entries.push({
         id: `snippet:${s.id}`,
@@ -203,7 +207,7 @@ export function buildPaletteEntries(input: PaletteInput): PaletteEntry[] {
         keywords: ['insert', 'snippet', 'paste', 'sql'],
         icon: 'snippet',
         searchOnly: true,
-        run: { kind: 'insert-sql', sid: front.sid, text: s.body },
+        run: { kind: 'insert-sql', sid: workspace.sid, text: s.body },
       });
     }
   }
@@ -235,35 +239,35 @@ export function buildPaletteEntries(input: PaletteInput): PaletteEntry[] {
     }
   }
 
-  if (front) {
+  if (workspace) {
     for (const w of workspaceTabs) {
       entries.push({
         id: `action:tab:${w.tab}`,
         group: 'actions',
         label: `Go to ${w.label}`,
-        detail: front.nickname,
+        detail: workspace.nickname,
         keywords: [w.tab, 'tab', 'go'],
         icon: w.icon,
-        run: { kind: 'tab', sid: front.sid, tab: w.tab },
+        run: { kind: 'tab', sid: workspace.sid, tab: w.tab },
       });
     }
     entries.push({
       id: 'action:refresh-schema',
       group: 'actions',
       label: 'Refresh schema',
-      detail: front.nickname,
+      detail: workspace.nickname,
       keywords: ['reload', 'introspect', 'catalog'],
       icon: 'refresh',
-      run: { kind: 'refresh-schema', sid: front.sid },
+      run: { kind: 'refresh-schema', sid: workspace.sid },
     });
     entries.push({
       id: 'action:search-history',
       group: 'actions',
       label: 'Search history…',
-      detail: front.nickname,
+      detail: workspace.nickname,
       keywords: ['history', 'runs', 'past', 'find', 'previous'],
       icon: 'history',
-      run: { kind: 'search-history', sid: front.sid },
+      run: { kind: 'search-history', sid: workspace.sid },
     });
   }
   if (active !== HOME) {

@@ -1,5 +1,40 @@
 # Nouveautés de Kleos
 
+## Version 0.7.2 — 25 novembre 2026
+
+### Se connecter à un autre serveur sans écraser le favori
+
+- **Un autre serveur devient un nouveau favori.** Dans le formulaire d'un favori, changer
+  l'hôte, le port, la base, l'utilisateur ou le tunnel SSH ne modifie plus ce favori : le
+  bouton devient « Connect as new » et crée un nouveau favori, nommé d'après la base et l'hôte
+  (par exemple « postgres on 127.0.0.1 »), à moins que vous ne l'ayez renommé. Le favori
+  d'origine reste tel quel.
+- **Modifier le favori, quand c'est voulu.** Le lien « Update … instead » le met à jour. S'il
+  est ouvert dans un onglet, Kleos demande d'abord : cet onglet reste connecté à l'ancien
+  serveur jusqu'à ce que vous le fermiez.
+- Le surnom, la couleur, la lecture seule, le mot de passe et le SSL modifient toujours le
+  même favori, comme avant.
+- **Le mot de passe suit, sur le même serveur seulement.** Même hôte, même port, même tunnel
+  SSH : le nouveau favori reprend le mot de passe enregistré dans le Trousseau. Vers un autre
+  hôte, il n'est jamais envoyé, pas même par « Test connection ».
+- **« Duplicate ».** Un nouveau bouton crée un favori à partir de celui affiché.
+
+### Plusieurs serveurs ouverts, mieux vérifiés
+
+- **Fermer un onglet ne reste plus bloqué.** Si une requête lente de la grille (un filtre
+  WHERE coûteux, un comptage exact sur une grosse table) tournait encore, la fermeture d'un
+  onglet de serveur attendait qu'elle se termine d'elle-même, tout comme la suppression du
+  favori et la sortie de Kleos. La requête est maintenant annulée et l'onglet se ferme aussitôt.
+- **⌘K ne propose plus d'actions sans effet.** Quand l'onglet au premier plan est un serveur
+  restauré qui attend encore sa connexion, la palette n'offre plus « Insert snippet », « Go to … »,
+  « Refresh schema » ni « Search history… », qui ne faisaient rien.
+- De nouveaux tests ouvrent plusieurs serveurs à la fois (deux bases, PostgreSQL 16 et 17,
+  lecture seule et écriture côte à côte) et vérifient que requêtes, annulations, délais,
+  exports, imports, modifications en attente, historique et moniteur restent chacun sur leur
+  serveur. La visite guidée de l'application ouvre désormais un troisième serveur.
+
+---
+
 ## Version 0.7.1 — 24 novembre 2026
 
 ### Un diagramme qui vous montre la bonne table

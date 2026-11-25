@@ -44,6 +44,8 @@ export async function startPostgres(
      * is configured, so it may import testcontainers itself. (0.4)
      */
     customize?: (builder: PostgreSqlContainer) => PostgreSqlContainer | Promise<PostgreSqlContainer>;
+    /** Another Postgres image, e.g. an older major next to the default 17 one. (0.7.2) */
+    image?: string;
   } = {},
 ): Promise<TestDatabase> {
   configureDocker();
@@ -51,7 +53,7 @@ export async function startPostgres(
   const { Wait } = await import('testcontainers');
   // The image logs this line twice: after initdb's temporary server, then for the real one.
   // Cheaper than the module's default (exec'd pg_isready + port probes), which matters on a busy Mac.
-  let builder = new PostgreSqlContainer(IMAGE)
+  let builder = new PostgreSqlContainer(options.image ?? IMAGE)
     .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
     .withStartupTimeout(170_000);
   if (options.command) builder = builder.withCommand(options.command);

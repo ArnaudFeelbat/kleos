@@ -316,3 +316,65 @@ describe('SSH tunnel and private CA on favorites (0.4)', () => {
     });
   });
 });
+
+describe('a favorite made from another one: copySecretsFrom (0.7.2)', () => {
+  it('reuses the stored password for another database or user on the same server', async () => {
+    const { createConnection, secrets } = setup();
+    const source = await createConnection({ nickname: 'shop (dev)', password: 'pw', savePassword: true });
+    const copy = await createConnection({
+      nickname: 'billing on localhost',
+      database: 'billing',
+      savePassword: true,
+      copySecretsFrom: source.id,
+    });
+    expect(copy.hasPassword).toBe(true);
+    expect(secrets.entries.get(copy.id)).toBe('pw');
+    // The original keeps its own entry.
+    expect(secrets.entries.get(source.id)).toBe('pw');
+  });
+
+  it('never sends a stored password to another host, port or SSH tunnel', async () => {
+    const { createConnection, secrets } = setup();
+    const source = await createConnection({ password: 'pw', savePassword: true, ssh: agentSsh });
+    for (const other of [
+      { host: 'db.example.com' },
+      { port: 6543 },
+      { ssh: null },
+      { ssh: { ...agentSsh, host: 'other-bastion' } },
+      { ssh: { ...agentSsh, user: 'root' } },
+    ]) {
+      const copy = await createConnection({ ssh: agentSsh, ...other, savePassword: true, copySecretsFrom: source.id });
+      expect(copy.hasPassword, JSON.stringify(other)).toBe(false);
+      expect(secrets.entries.has(copy.id)).toBe(false);
+    }
+  });
+
+  it('prefers a typed password, and copies nothing when the Keychain is not wanted', async () => {
+    const { createConnection, secrets } = setup();
+    const source = await createConnection({ password: 'pw', savePassword: true });
+    const typed = await createConnection({ password: 'new', savePassword: true, copySecretsFrom: source.id });
+    expect(secrets.entries.get(typed.id)).toBe('new');
+    const unsaved = await createConnection({ savePassword: false, copySecretsFrom: source.id });
+    expect(unsaved.hasPassword).toBe(false);
+    expect(secrets.entries.has(unsaved.id)).toBe(false);
+  });
+
+  it('copies the SSH key passphrase only for the same key file on the same tunnel', async () => {
+    const { createConnection, secrets } = setup();
+    const source = await createConnection({ ssh: keySsh, sshPassphrase: 'secret', saveSshPassphrase: true });
+    const same = await createConnection({ ssh: keySsh, saveSshPassphrase: true, copySecretsFrom: source.id });
+    expect(secrets.entries.get(`${same.id}:ssh`)).toBe('secret');
+    const otherKey = await createConnection({
+      ssh: { ...keySsh, keyPath: '~/.ssh/other' },
+      saveSshPassphrase: true,
+      copySecretsFrom: source.id,
+    });
+    expect(otherKey.hasSshPassphrase).toBe(false);
+  });
+
+  it('answers 404 when the source favorite does not exist', async () => {
+    const { call } = setup();
+    const res = await call('POST', '/connections', connectionInput({ copySecretsFrom: 'missing' }));
+    expect(res.status).toBe(404);
+  });
+});

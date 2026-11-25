@@ -1,4 +1,4 @@
-import type pg from 'pg';
+import pg from 'pg';
 import type {
   ApplyEditsResult,
   BackendActionResult,
@@ -25,7 +25,11 @@ import { postgresJobs } from './jobs';
 import { QueryManager } from './query';
 import { estimateCount, exactCount, fetchRows } from './rows';
 import { StatsCollector } from './stats';
-import { type Queryable, TypeCache } from './types';
+import { type Queryable, TypeCache, metaQuery } from './types';
+
+/** While a closing session waits for its pool, how often its busy clients are signalled again, and how many times. */
+const CLOSE_CANCEL_EVERY_MS = 200;
+const CLOSE_CANCEL_ATTEMPTS = 10;
 
 export type SessionInit = {
   pool: pg.Pool;
@@ -53,6 +57,7 @@ export class PostgresSession implements Session {
   readonly notices: SessionNotice[];
 
   private readonly pool: pg.Pool;
+  private readonly ownPids: Set<number>;
   private readonly tunnel: SshTunnel | null;
   private readonly queries: QueryManager;
   private readonly monitor: StatsCollector;
@@ -67,6 +72,7 @@ export class PostgresSession implements Session {
 
   constructor(init: SessionInit) {
     this.pool = init.pool;
+    this.ownPids = init.ownPids;
     this.readOnly = init.readOnly;
     this.serverVersion = init.serverVersion;
     this.serverVersionShort = init.serverVersionShort;
@@ -170,10 +176,49 @@ export class PostgresSession implements Session {
   close(): Promise<void> {
     this.closing ??= (async () => {
       await this.queries.closeAll().catch(() => undefined);
-      await this.pool.end().catch(() => undefined);
+      // pool.end() waits for every checked-out client to come back. A grid request still running
+      // on one (a slow raw WHERE, an exact count of a big table) used to hold the close, and the
+      // DELETE /sessions/:sid answering it, until the statement finished on its own (0.7.2).
+      // end() first, so no new checkout can start, then cancel what the busy clients run.
+      const ended = this.pool.end().catch(() => undefined);
+      await this.cancelPooledStatements(ended);
+      await ended;
       await this.tunnel?.close();
     })();
     return this.closing;
+  }
+
+  /**
+   * Sends pg_cancel_backend to the pool's backends until the pool has ended, from a client of
+   * its own (the pool takes no new checkouts once ending, and every client may be busy). The
+   * pids are all the session's remaining backends: once the tab clients are closed those are the
+   * pool's, and a cancel reaching an idle one does nothing. Repeated for a client that was
+   * between two statements (BEGIN READ ONLY, then the user's WHERE) when the first one landed.
+   */
+  private async cancelPooledStatements(ended: Promise<void>): Promise<void> {
+    // end() drops the idle clients at once: nothing left means nothing was running.
+    if (this.pool.totalCount === 0) return;
+    let finished = false;
+    void ended.then(() => {
+      finished = true;
+    });
+    let client: pg.Client | null = null;
+    try {
+      for (let attempt = 0; attempt < CLOSE_CANCEL_ATTEMPTS && !finished; attempt += 1) {
+        if (!client) {
+          // The pool's settings already went through the SSL fallback (and point at any tunnel).
+          client = new pg.Client(this.pool.options);
+          client.on('error', () => undefined);
+          await client.connect();
+        }
+        await metaQuery(client, 'select pg_cancel_backend(pid) from unnest($1::int[]) as pid', [[...this.ownPids]]);
+        await Promise.race([ended, new Promise((resolve) => setTimeout(resolve, CLOSE_CANCEL_EVERY_MS))]);
+      }
+    } catch {
+      // Server unreachable: the busy clients fail on their own, which ends the pool too.
+    } finally {
+      await client?.end().catch(() => undefined);
+    }
   }
 }
 

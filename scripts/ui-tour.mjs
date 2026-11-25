@@ -330,6 +330,70 @@ try {
     await win.click(tabButton('shop (dev)'), 'first tab');
     await sleep(400);
   });
+  // 0.7.2: typing another database over a saved favorite connects to it as a new favorite; the
+  // favorite it started from is kept. The third server runs its own query in its own tab.
+  const thirdName = `postgres on ${pgInfo.host}`;
+  const connectAsNew = `${visible('button')}.find((b) => b.textContent.includes('Connect as new'))`;
+  await step('another database typed over a favorite opens a third server, as a new favorite', async () => {
+    await win.click(
+      `document.querySelector('nav[aria-label="Open connections"] button[aria-label="Connections"]')`,
+      'Connections tab',
+    );
+    await win.click(byText('nav[aria-label="Saved connections"] button', 'shop (dev)'), 'favorite shop (dev)');
+    const databaseField = `document.getElementById([...document.querySelectorAll('form[aria-label="Connection"] label')].find((l) => l.textContent.trim() === 'Database')?.htmlFor)`;
+    await win.waitFor(`${databaseField}?.value === ${JSON.stringify(pgInfo.database)}`, 'shop (dev) in the form');
+    await win.click(databaseField, 'Database field');
+    // A synthetic Cmd+A doesn't select an input's text on macOS (no menu command behind it).
+    await win.evaluate(`${databaseField}.select()`);
+    await win.type('postgres');
+    await win.waitFor(
+      `!!${connectAsNew} && document.querySelector('form[aria-label="Connection"] h1')?.textContent === ${JSON.stringify(thirdName)} && document.body.innerText.includes('stays as it is')`,
+      'Connect as new, named after the database',
+    );
+    await sleep(400);
+    await win.shot('04b-connect-as-new');
+    await win.click(connectAsNew, 'Connect as new');
+    await win.click(`document.querySelector('[role="dialog"] input[type="password"]')`, 'password field');
+    await win.type(pgInfo.password);
+    await win.key('Enter', 'Enter', 13);
+    await win.waitFor(`${tabButton(thirdName)}?.getAttribute('aria-current') === 'page'`, 'third tab in front', 20000);
+    const favorites = await win.evaluate(
+      `fetch(window.kleos.apiBase + '/api/connections', { headers: { authorization: 'Bearer ' + window.kleos.token } }).then((r) => r.json())`,
+    );
+    const dev = favorites.find((c) => c.nickname === 'shop (dev)');
+    const third = favorites.find((c) => c.nickname === thirdName);
+    if (favorites.length !== 3 || dev?.database !== pgInfo.database || third?.database !== 'postgres') {
+      throw new Error(
+        `favorites after Connect as new: ${JSON.stringify(favorites.map((c) => [c.nickname, c.database]))}`,
+      );
+    }
+    console.log(`  favorites: ${favorites.map((c) => `${c.nickname} → ${c.database}`).join(', ')}`);
+
+    // Its own query answers from its own database, in its own tab.
+    await win.click(`${visible('[role=tab]')}.find((t) => t.textContent.trim() === 'Query')`, 'Query tab');
+    await win.click(`${visible('.cm-content')}[0]`, 'editor');
+    await win.key('a', 'KeyA', 65, 4);
+    await win.type('select current_database() as db;');
+    await win.key('Enter', 'Enter', 13, 4);
+    await win.waitFor(
+      `${visible('[role=gridcell]')}.map((c) => c.textContent.trim()).join(',') === 'postgres'`,
+      'current_database() = postgres in the third tab',
+      20000,
+    );
+    const tabsInOrder = await win.evaluate(
+      `[...document.querySelectorAll('nav[aria-label="Open connections"] button')].map((b) => b.textContent.trim()).filter((t) => t && t !== 'Connections')`,
+    );
+    console.log(`  tabs: ${tabsInOrder.join(' | ')}`);
+    await sleep(500);
+    await win.shot('04c-third-server');
+    await win.click(tabButton('shop (dev)'), 'first tab');
+    // The first server's editor is untouched by the third one's query.
+    await win.waitFor(
+      `!${visible('.cm-content')}.some((e) => e.textContent.includes('current_database'))`,
+      'first tab editor',
+    );
+    await sleep(400);
+  });
   await step(`switch to schema ${pgInfo.schema}`, async () => {
     await win.click(`${visible('aside [role=combobox]')}[0]`, 'schema picker');
     await win.click(byText('[role=option]', pgInfo.schema), `option ${pgInfo.schema}`);
@@ -816,8 +880,8 @@ try {
     const again = await attach(() => true, 30000);
     current = again;
     await again.waitFor(
-      `!!${tabButton('shop (dev)')} && !!${tabButton('shop (read-only)')}`,
-      'both server tabs restored',
+      `!!${tabButton('shop (dev)')} && !!${tabButton('shop (read-only)')} && !!${tabButton(thirdName)}`,
+      'all three server tabs restored',
       30000,
     );
     await again.click(tabButton('shop (dev)'), 'restored tab');

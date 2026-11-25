@@ -92,6 +92,20 @@ describe('buildPaletteEntries', () => {
     expect(front.some((e) => e.id === 'action:home')).toBe(true);
   });
 
+  it('offers no workspace action for a restored tab still waiting for its session, only closing it (0.7.2)', () => {
+    const waiting: ConnectionTab = { ...tab('restore:c2', 'c2', 'prod'), restore: { state: 'reconnect', reason: '' } };
+    const snippets = [{ id: 'n1', name: 'Locks', body: 'select * from pg_locks', createdAt: '', updatedAt: '' }];
+    const entries = buildPaletteEntries(
+      input({ tabs: [tab('s1', 'c1', 'dev'), waiting], active: 'restore:c2', snippets }),
+    );
+    // Its placeholder id never gets a workspace: an intent sent there would silently do nothing.
+    expect(entries.filter((e) => e.group === 'snippets')).toEqual([]);
+    expect(entries.filter((e) => 'sid' in e.run && e.run.sid === 'restore:c2').map((e) => e.id)).toEqual([
+      'server:restore:c2',
+      'action:close-tab',
+    ]);
+  });
+
   it('lists saved queries of open servers to run (once typing) or open, with their chart type', () => {
     const query = {
       id: 'q1',

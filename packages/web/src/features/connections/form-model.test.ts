@@ -5,7 +5,11 @@ import {
   connectionSubtitle,
   emptyForm,
   formFromSaved,
+  nameForNewFavorite,
+  pointsElsewhere,
+  sameServer,
   toConnectionInput,
+  uniqueName,
   toTestRequest,
   validateForm,
 } from './form-model';
@@ -150,5 +154,60 @@ describe('SSH tunnel and CA certificate', () => {
     expect(toConnectionInput({ ...withCa, sslMode: 'require' }).sslRootCertPath).toBe('/Users/me/ca.pem');
     expect(toConnectionInput({ ...withCa, sslMode: 'prefer' }).sslRootCertPath).toBeNull();
     expect(toTestRequest({ ...base, sslMode: 'require' }, null).sslRootCertPath).toBeNull();
+  });
+});
+
+describe('a favorite edited to point elsewhere (0.7.2)', () => {
+  const base = formFromSaved(savedConnection);
+
+  it('points elsewhere when the host, port, user, database or SSH tunnel changes', () => {
+    expect(pointsElsewhere({ ...base, host: 'db.example.com' }, base)).toBe(true);
+    expect(pointsElsewhere({ ...base, port: '6543' }, base)).toBe(true);
+    expect(pointsElsewhere({ ...base, user: 'alice' }, base)).toBe(true);
+    expect(pointsElsewhere({ ...base, database: 'billing' }, base)).toBe(true);
+    expect(pointsElsewhere({ ...base, sshEnabled: true, sshHost: 'bastion', sshUser: 'deploy' }, base)).toBe(true);
+  });
+
+  it('stays the same favorite for its own settings, and for spellings that save the same', () => {
+    for (const patch of [
+      { nickname: 'Shop' },
+      { color: 'red' as const },
+      { readOnly: true },
+      { password: 'new' },
+      { savePassword: false },
+      { sslMode: 'require' as const },
+      { host: '  LOCALHOST ' },
+      { port: ' 5432' },
+    ]) {
+      expect(pointsElsewhere({ ...base, ...patch }, base), JSON.stringify(patch)).toBe(false);
+    }
+    // An empty database means "same as the user", which is what this favorite saved.
+    const sameAsUser = formFromSaved({ ...savedConnection, database: savedConnection.user });
+    expect(pointsElsewhere({ ...sameAsUser, database: '' }, sameAsUser)).toBe(false);
+    // SSH fields kept while the tunnel is off are not sent, so they don't matter.
+    expect(pointsElsewhere({ ...base, sshHost: 'bastion' }, base)).toBe(false);
+  });
+
+  it('sameServer compares host (ignoring case), port and the SSH tunnel only', () => {
+    expect(sameServer({ ...base, database: 'billing', user: 'alice' }, base)).toBe(true);
+    expect(sameServer({ ...base, host: 'LocalHost' }, base)).toBe(true);
+    expect(sameServer({ ...base, port: '6543' }, base)).toBe(false);
+    const tunneled = { ...base, sshEnabled: true, sshHost: 'bastion', sshUser: 'deploy' };
+    expect(sameServer(tunneled, tunneled)).toBe(true);
+    expect(sameServer({ ...tunneled, sshHost: 'other' }, tunneled)).toBe(false);
+    expect(sameServer(base, tunneled)).toBe(false);
+  });
+
+  it('names the new favorite "<database> on <host>", unless the user typed a name', () => {
+    expect(nameForNewFavorite({ ...base, database: 'billing' }, base, [])).toBe('billing on localhost');
+    expect(nameForNewFavorite({ ...base, database: 'billing', nickname: 'Billing' }, base, [])).toBe('Billing');
+    expect(nameForNewFavorite({ ...base, host: 'db.example.com' }, base, ['shop_dev on DB.example.com'])).toBe(
+      'shop_dev on db.example.com 2',
+    );
+  });
+
+  it('uniqueName counts up past every taken name', () => {
+    expect(uniqueName('Shop', [])).toBe('Shop');
+    expect(uniqueName('Shop', ['shop', 'Shop 2'])).toBe('Shop 3');
   });
 });

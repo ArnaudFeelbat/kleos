@@ -6,7 +6,7 @@ import { FavoritesList } from './favorites-list';
 import { useConnectActions } from './connect-context';
 
 /** `undefined` = nothing picked yet: show the first favorite, or a new form when there is none. */
-type Selection = { kind: 'new' } | { kind: 'saved'; id: string } | undefined;
+type Selection = { kind: 'new'; from?: string } | { kind: 'saved'; id: string } | undefined;
 
 /**
  * The Connections tab: favorites on the translucent pane, the login form for the selected
@@ -21,6 +21,9 @@ export function ConnectionsScreen() {
   const selectedId =
     selection?.kind === 'saved' ? selection.id : selection === undefined ? (list[0]?.id ?? null) : null;
   const saved = selectedId ? (list.find((f) => f.id === selectedId) ?? null) : null;
+  // Duplicate: a new form that starts from this favorite.
+  const template =
+    selection?.kind === 'new' && selection.from ? (list.find((f) => f.id === selection.from) ?? null) : null;
   // A just-created favorite may not be in the refetched list yet; wait for it instead of showing a blank form.
   const waitingForList = selection?.kind === 'saved' && !saved && favorites.isFetching;
 
@@ -41,11 +44,13 @@ export function ConnectionsScreen() {
       <main className="bg-sidebar dark:bg-background flex min-w-0 flex-1 items-start justify-center overflow-y-auto rounded-tl-[10px] px-6 py-12 shadow-[0_0_0_1px_var(--edge),var(--elev-1)]">
         {favorites.isPending || waitingForList ? null : (
           <ConnectionForm
-            key={saved?.id ?? 'new'}
+            key={saved?.id ?? (template ? `copy:${template.id}` : 'new')}
             saved={saved}
+            template={template}
             connecting={saved !== null && connectingId === saved.id}
             onSaved={(s) => setSelection({ kind: 'saved', id: s.id })}
             onDeleted={() => setSelection(undefined)}
+            onDuplicate={(s) => setSelection({ kind: 'new', from: s.id })}
             onConnect={connect}
           />
         )}
