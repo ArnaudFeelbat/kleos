@@ -466,3 +466,165 @@ describe('ConnectionsScreen — SSH and TLS', { timeout: 15_000 }, () => {
     expect(screen.queryByLabelText('CA certificate')).not.toBeInTheDocument();
   });
 });
+
+describe('ConnectionsScreen — another server typed over a favorite (0.7.2)', { timeout: 15_000 }, () => {
+  /** The form's state badge (the favorites list has a New button and a Saved heading too). */
+  const badge = (text: string) =>
+    within(screen.getByRole('form', { name: 'Connection' })).getByText(text, { exact: true });
+
+  async function formFor(favorites: SavedConnection[] = [savedConnection]) {
+    renderScreen(favorites);
+    const database = await screen.findByLabelText('Database');
+    await waitFor(() => expect(database).toHaveValue('shop_dev'));
+    return database;
+  }
+
+  it('connects to another database as a new favorite and keeps the one it started from', async () => {
+    const user = userEvent.setup();
+    const created = { ...savedConnection, id: 'c2', nickname: 'billing on localhost', database: 'billing' };
+    mocked.createConnection.mockResolvedValue(created);
+    mocked.openSession.mockResolvedValue({ ...sessionInfo, sid: 's2', connection: created });
+    const database = await formFor();
+
+    await user.clear(database);
+    await user.type(database, 'billing');
+    expect(badge('New')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'billing on localhost' })).toBeInTheDocument();
+    expect(screen.getByText(/stays as it is/)).toBeInTheDocument();
+    // Same server: the new favorite will reuse the stored password, and says so.
+    expect(screen.getByLabelText('Password')).toHaveAttribute('placeholder', 'Same as shop_dev');
+    expect(screen.getByRole('button', { name: 'Save as new' })).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: /Connect as new/ }));
+
+    await waitFor(() => expect(openTabs()).toHaveLength(1));
+    expect(mocked.updateConnection).not.toHaveBeenCalled();
+    expect(mocked.createConnection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        nickname: 'billing on localhost',
+        database: 'billing',
+        host: 'localhost',
+        copySecretsFrom: 'c1',
+      }),
+    );
+    expect(mocked.openSession).toHaveBeenCalledWith(expect.objectContaining({ connectionId: 'c2' }));
+  });
+
+  it('treats a new host, port or user the same way, and keeps a name the user typed', async () => {
+    const user = userEvent.setup();
+    mocked.createConnection.mockImplementation(async (input) => ({ ...savedConnection, ...input, id: 'c9' }));
+    await formFor([savedConnection, { ...savedConnection, id: 'c3', nickname: 'shop_dev on db.example.com' }]);
+
+    const host = screen.getByLabelText('Host');
+    await user.clear(host);
+    await user.type(host, 'db.example.com');
+    // Another host: no stored password is offered to it.
+    expect(screen.getByLabelText('Password')).toHaveAttribute('placeholder', '');
+    // The generated name is never one another favorite already has.
+    expect(screen.getByRole('heading', { name: 'shop_dev on db.example.com 2' })).toBeInTheDocument();
+
+    const nickname = screen.getByLabelText('Nickname');
+    await user.clear(nickname);
+    await user.type(nickname, 'Prod replica');
+    await user.click(screen.getByRole('button', { name: 'Save as new' }));
+    await waitFor(() => expect(mocked.createConnection).toHaveBeenCalledTimes(1));
+    expect(mocked.createConnection).toHaveBeenCalledWith(
+      expect.objectContaining({ nickname: 'Prod replica', host: 'db.example.com' }),
+    );
+    expect(mocked.updateConnection).not.toHaveBeenCalled();
+  });
+
+  it('still updates the favorite for its own settings: nickname, color, read-only', async () => {
+    const user = userEvent.setup();
+    mocked.updateConnection.mockImplementation(async (_id, input) => ({ ...savedConnection, ...input }));
+    await formFor();
+    const nickname = screen.getByLabelText('Nickname');
+    await user.clear(nickname);
+    await user.type(nickname, 'Shop');
+    await user.click(screen.getByRole('switch', { name: /Read-only/ }));
+    expect(badge('Edited')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Connect as new/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(mocked.updateConnection).toHaveBeenCalledTimes(1));
+    expect(mocked.updateConnection).toHaveBeenCalledWith(
+      'c1',
+      expect.objectContaining({ nickname: 'Shop', readOnly: true }),
+    );
+    expect(mocked.createConnection).not.toHaveBeenCalled();
+  });
+
+  it('"Update … instead" rewrites the favorite on purpose', async () => {
+    const user = userEvent.setup();
+    mocked.updateConnection.mockImplementation(async (_id, input) => ({ ...savedConnection, ...input }));
+    const database = await formFor();
+    await user.clear(database);
+    await user.type(database, 'billing');
+    await user.click(screen.getByRole('button', { name: 'Update shop_dev instead' }));
+    await waitFor(() => expect(mocked.updateConnection).toHaveBeenCalledTimes(1));
+    expect(mocked.updateConnection).toHaveBeenCalledWith('c1', expect.objectContaining({ database: 'billing' }));
+    expect(mocked.createConnection).not.toHaveBeenCalled();
+    // Updated: the form is that favorite again, saved.
+    await waitFor(() => expect(badge('Saved')).toBeInTheDocument());
+  });
+
+  it('asks before updating a favorite that is open in a tab', async () => {
+    const user = userEvent.setup();
+    mocked.updateConnection.mockImplementation(async (_id, input) => ({ ...savedConnection, ...input }));
+    tabsStore.open(sessionInfo);
+    tabsStore.activate(HOME);
+    const database = await formFor();
+    await user.clear(database);
+    await user.type(database, 'billing');
+    await user.click(screen.getByRole('button', { name: 'Update shop_dev instead' }));
+
+    const dialog = await screen.findByRole('alertdialog', { name: 'Update shop_dev?' });
+    expect(dialog).toHaveTextContent('kleos@localhost:5432/shop_dev');
+    expect(dialog).toHaveTextContent('kleos@localhost:5432/billing');
+    await user.click(within(dialog).getByRole('button', { name: 'Keep it' }));
+    expect(mocked.updateConnection).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Update shop_dev instead' }));
+    await user.click(
+      within(await screen.findByRole('alertdialog', { name: 'Update shop_dev?' })).getByRole('button', {
+        name: 'Update',
+      }),
+    );
+    await waitFor(() => expect(mocked.updateConnection).toHaveBeenCalledTimes(1));
+  });
+
+  it('tests a new host without the stored password, the same server with it', async () => {
+    const user = userEvent.setup();
+    mocked.testConnection.mockResolvedValue({ version: 'PostgreSQL 17.2', elapsedMs: 12, tls: false });
+    const database = await formFor();
+    await user.clear(database);
+    await user.type(database, 'billing');
+    await user.click(screen.getByRole('button', { name: /Test connection/ }));
+    await waitFor(() =>
+      expect(mocked.testConnection).toHaveBeenLastCalledWith(expect.objectContaining({ connectionId: 'c1' })),
+    );
+
+    const host = screen.getByLabelText('Host');
+    await user.clear(host);
+    await user.type(host, 'db.example.com');
+    await user.click(screen.getByRole('button', { name: /Test connection/ }));
+    await waitFor(() => expect(mocked.testConnection).toHaveBeenCalledTimes(2));
+    expect(mocked.testConnection.mock.calls[1]?.[0]).not.toHaveProperty('connectionId');
+  });
+
+  it('Duplicate starts a new favorite from this one, reusing its password on the same server', async () => {
+    const user = userEvent.setup();
+    const created = { ...savedConnection, id: 'c2', nickname: 'shop_dev copy' };
+    mocked.createConnection.mockResolvedValue(created);
+    await formFor();
+    await user.click(screen.getByRole('button', { name: 'Duplicate' }));
+
+    await waitFor(() => expect(screen.getByLabelText('Nickname')).toHaveValue('shop_dev copy'));
+    expect(screen.getByText(/A copy of shop_dev/)).toBeInTheDocument();
+    expect(badge('New')).toBeInTheDocument();
+    expect(screen.getByLabelText('Password')).toHaveAttribute('placeholder', 'Same as shop_dev');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(mocked.createConnection).toHaveBeenCalledTimes(1));
+    expect(mocked.createConnection).toHaveBeenCalledWith(
+      expect.objectContaining({ nickname: 'shop_dev copy', database: 'shop_dev', copySecretsFrom: 'c1' }),
+    );
+  });
+});

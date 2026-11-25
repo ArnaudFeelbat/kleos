@@ -213,3 +213,58 @@ export function connectionSubtitle(c: Pick<SavedConnection, 'user' | 'host' | 'p
 export function sameForm(a: FormState, b: FormState): boolean {
   return (Object.keys(a) as FormField[]).every((k) => a[k] === b[k]);
 }
+
+/** Host, port and SSH tunnel as they will be saved: the way the server is reached. */
+function serverOf(form: FormState) {
+  const config = configOf(form);
+  const ssh = config.ssh;
+  return {
+    host: config.host.toLowerCase(),
+    port: config.port,
+    tunnel: ssh ? `${ssh.user}@${ssh.host}:${ssh.port}` : null,
+  };
+}
+
+/**
+ * Whether both forms reach the same Postgres server the same way (host, port, SSH tunnel). The
+ * server applies the same rule before it copies a stored password to a new favorite, and Test
+ * only falls back to a favorite's stored password under it: a password never goes to another host.
+ */
+export function sameServer(a: FormState, b: FormState): boolean {
+  const x = serverOf(a);
+  const y = serverOf(b);
+  return x.host === y.host && x.port === y.port && x.tunnel === y.tunnel;
+}
+
+/**
+ * Whether an edited favorite now points somewhere else: another server (host, port, SSH tunnel),
+ * database or user. Typing another server's details over a saved favorite is a reflex for
+ * "connect to that one", so Kleos makes a new favorite then, instead of rewriting this one (0.7.2).
+ * The nickname, color, read-only, password and SSL settings only adjust the same favorite.
+ */
+export function pointsElsewhere(form: FormState, saved: FormState): boolean {
+  const a = configOf(form);
+  const b = configOf(saved);
+  return !sameServer(form, saved) || a.user !== b.user || a.database !== b.database;
+}
+
+/** `name`, or `name 2`, `name 3`… — the first one no other favorite has (ignoring case). */
+export function uniqueName(name: string, taken: readonly string[]): string {
+  const used = new Set(taken.map((t) => t.trim().toLowerCase()));
+  if (!used.has(name.toLowerCase())) return name;
+  for (let n = 2; ; n += 1) {
+    const candidate = `${name} ${n}`;
+    if (!used.has(candidate.toLowerCase())) return candidate;
+  }
+}
+
+/**
+ * The nickname of a favorite made from `saved`: the one the user typed if they renamed it, else
+ * "<database> on <host>" (what changed is usually one of those), never a name already taken.
+ */
+export function nameForNewFavorite(form: FormState, saved: FormState, taken: readonly string[]): string {
+  const typed = form.nickname.trim();
+  if (typed !== '' && typed !== saved.nickname.trim()) return typed;
+  const config = configOf(form);
+  return uniqueName(`${config.database} on ${config.host}`, taken);
+}

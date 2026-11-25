@@ -6,7 +6,7 @@ import {
   type TestConnectionResult,
 } from '@kleos/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { CircleX, Database, LoaderCircle, Lock, Plug, Slash, Trash, Waypoints, X } from 'lucide-react';
+import { CircleX, CopyPlus, Database, LoaderCircle, Lock, Plug, Slash, Trash, Waypoints, X } from 'lucide-react';
 import { RadioGroup as RadioGroupPrimitive } from 'radix-ui';
 import { useId, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
@@ -30,6 +30,7 @@ import { Switch } from '@/components/ui/switch';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Callout } from '@/features/common/callout';
 import { kbdOnPrimary, segmentedItem, segmentedList } from '@/features/common/styles';
+import { tabsStore } from '@/features/shell/tabs-store';
 import { api, errorText, queryKeys } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { connectionColorLabel, connectionColorSwatch } from './colors';
@@ -41,8 +42,12 @@ import {
   effectiveNickname,
   emptyForm,
   formFromSaved,
+  nameForNewFavorite,
+  pointsElsewhere,
   sameForm,
+  sameServer,
   toConnectionInput,
+  uniqueName,
   toTestRequest,
   usesCaCertificate,
   validateForm,
@@ -57,28 +62,56 @@ type TestOutcome = { ok: true; result: TestConnectionResult; ssh: SshConfig | nu
 type Props = {
   /** null for a new, unsaved connection. */
   saved: SavedConnection | null;
+  /** Duplicate: a new connection starts from this favorite's settings (and, on the same server, its secrets). */
+  template?: SavedConnection | null;
   connecting: boolean;
   onSaved(saved: SavedConnection): void;
   onDeleted(): void;
+  onDuplicate(saved: SavedConnection): void;
   onConnect(connection: SavedConnection, password: string | null): Promise<void>;
 };
 
 /**
  * Login form for one favorite (keyed by id by the parent). Pasting a postgres:// URL into any
  * field fills the whole form. Connect on an unsaved or edited form saves it first, then connects.
+ * Editing where a saved favorite points (server, database, user) makes a new favorite instead of
+ * rewriting this one; "Update … instead" is the deliberate way to change it (0.7.2).
  */
-export function ConnectionForm({ saved, connecting, onSaved, onDeleted, onConnect }: Props) {
+export function ConnectionForm({
+  saved,
+  template = null,
+  connecting,
+  onSaved,
+  onDeleted,
+  onDuplicate,
+  onConnect,
+}: Props) {
   const queryClient = useQueryClient();
-  const initial = saved ? formFromSaved(saved) : emptyForm;
+  const takenNames = (queryClient.getQueryData<SavedConnection[]>(queryKeys.connections) ?? []).map((f) => f.nickname);
+  const [templateForm] = useState(() => (template ? formFromSaved(template) : null));
+  const initial = saved
+    ? formFromSaved(saved)
+    : templateForm && template
+      ? { ...templateForm, nickname: uniqueName(`${template.nickname} copy`, takenNames) }
+      : emptyForm;
   const [form, setForm] = useState<FormState>(initial);
   const [baseline, setBaseline] = useState<FormState>(initial);
   const [errors, setErrors] = useState<FormErrors>({});
   const [test, setTest] = useState<TestOutcome | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmUpdate, setConfirmUpdate] = useState(false);
   const ids = useId();
   const id = (name: string) => `${ids}-${name}`;
 
   const dirty = !saved || !sameForm(form, baseline);
+  // Another server, database or user typed over a saved favorite: Connect and Save make a new one.
+  const fork = saved !== null && pointsElsewhere(form, baseline);
+  const forkName = fork ? nameForNewFavorite(form, baseline, takenNames) : null;
+  // The favorite this form started from, whose stored secrets a new favorite may reuse (same server only).
+  const source = saved ?? template;
+  const sourceForm = saved ? baseline : templateForm;
+  const onSourceServer = source !== null && sourceForm !== null && sameServer(form, sourceForm);
+  const creating = !saved || fork;
 
   function update(patch: Partial<FormState>) {
     setForm((f) => ({ ...f, ...patch }));
@@ -102,7 +135,8 @@ export function ConnectionForm({ saved, connecting, onSaved, onDeleted, onConnec
   const [testing, setTesting] = useState(false);
 
   async function runTest() {
-    const request = toTestRequest(form, saved?.id ?? null);
+    // The stored password is only tried on the server it was saved for.
+    const request = toTestRequest(form, onSourceServer ? source.id : null);
     const ssh = request.ssh ?? null;
     setTest(null);
     setTesting(true);
@@ -132,9 +166,15 @@ export function ConnectionForm({ saved, connecting, onSaved, onDeleted, onConnec
   }
 
   const saveMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: (mode: 'create' | 'update') => {
       const input = toConnectionInput(form);
-      return saved ? api.updateConnection(saved.id, input) : api.createConnection(input);
+      if (mode === 'update' && saved) return api.updateConnection(saved.id, input);
+      return api.createConnection({
+        ...input,
+        ...(forkName ? { nickname: forkName } : {}),
+        // The server copies the source's Keychain entries only if it is the same server.
+        copySecretsFrom: source?.id ?? null,
+      });
     },
     onSuccess: async (result) => {
       // Secrets never come back, and the Keychain choices are the user's: keep them as typed.
@@ -160,10 +200,10 @@ export function ConnectionForm({ saved, connecting, onSaved, onDeleted, onConnec
     onError: (err) => toast.error('Could not delete the favorite', { description: errorText(err) }),
   });
 
-  async function save(): Promise<SavedConnection | null> {
+  async function save(mode: 'create' | 'update'): Promise<SavedConnection | null> {
     if (!check()) return null;
     try {
-      return await saveMutation.mutateAsync();
+      return await saveMutation.mutateAsync(mode);
     } catch (err) {
       toast.error('Could not save the favorite', { description: errorText(err) });
       return null;
@@ -171,9 +211,9 @@ export function ConnectionForm({ saved, connecting, onSaved, onDeleted, onConnec
   }
 
   async function handleSave() {
-    const result = await save();
+    const result = await save(creating ? 'create' : 'update');
     if (result) {
-      toast.success(`Saved ${result.nickname}`);
+      toast.success(fork ? `Saved ${result.nickname} as a new favorite` : `Saved ${result.nickname}`);
       onSaved(result);
     }
   }
@@ -182,10 +222,10 @@ export function ConnectionForm({ saved, connecting, onSaved, onDeleted, onConnec
     const password = form.password === '' ? null : form.password;
     let target = saved;
     if (dirty) {
-      target = await save();
+      target = await save(creating ? 'create' : 'update');
       if (!target) return;
       // A new favorite becomes the selection now, so a second Connect cannot create a duplicate.
-      if (!saved) onSaved(target);
+      if (creating) onSaved(target);
     }
     if (!target) return;
     await onConnect(target, password);
@@ -193,6 +233,18 @@ export function ConnectionForm({ saved, connecting, onSaved, onDeleted, onConnec
 
   function handleTest() {
     if (check()) void runTest();
+  }
+
+  /** "Update … instead": rewrite this favorite on purpose — asked first while a tab is open on it. */
+  async function updateInstead(confirmed = false) {
+    if (!saved) return;
+    const tab = tabsStore.findByConnection(saved.id);
+    if (!confirmed && tab && !tab.restore) {
+      setConfirmUpdate(true);
+      return;
+    }
+    const result = await save('update');
+    if (result) toast.success(`Updated ${result.nickname}`);
   }
 
   async function choose(kind: 'key' | 'cert') {
@@ -205,7 +257,15 @@ export function ConnectionForm({ saved, connecting, onSaved, onDeleted, onConnec
   }
 
   const busy = saveMutation.isPending || connecting;
-  const title = effectiveNickname(form) || 'New connection';
+  const title = forkName ?? (effectiveNickname(form) || 'New connection');
+  const passwordPlaceholder =
+    saved && !fork
+      ? saved.hasPassword
+        ? 'Saved in Keychain'
+        : ''
+      : onSourceServer && source.hasPassword
+        ? `Same as ${source.nickname}`
+        : '';
 
   return (
     <>
@@ -241,17 +301,31 @@ export function ConnectionForm({ saved, connecting, onSaved, onDeleted, onConnec
                 variant="outline"
                 className={cn(
                   'h-5 text-[11px]',
-                  !saved && 'border-brand-line bg-brand-soft text-brand-text',
-                  saved && dirty && 'border-warning-line bg-warning-bg text-warning',
+                  creating && 'border-brand-line bg-brand-soft text-brand-text',
+                  !creating && dirty && 'border-warning-line bg-warning-bg text-warning',
                 )}
               >
-                {!saved ? 'New' : dirty ? 'Edited' : 'Saved'}
+                {creating ? 'New' : dirty ? 'Edited' : 'Saved'}
               </Badge>
             </div>
-            <p className="text-muted-foreground text-[12.5px]">
-              Paste a <span className="text-foreground/80 font-mono">postgres://</span> URL into any field to fill the
-              whole form.
-            </p>
+            {fork && saved ? (
+              <p className="text-muted-foreground text-[12.5px]">
+                A new favorite. <span className="text-foreground/80">{saved.nickname}</span> stays as it is.{' '}
+                <button
+                  type="button"
+                  className="text-brand-text font-medium underline-offset-2 hover:underline"
+                  onClick={() => void updateInstead()}
+                >
+                  Update {saved.nickname} instead
+                </button>
+              </p>
+            ) : (
+              <p className="text-muted-foreground text-[12.5px]">
+                {template && <>A copy of {template.nickname}. </>}
+                Paste a <span className="text-foreground/80 font-mono">postgres://</span> URL into any field to fill the
+                whole form.
+              </p>
+            )}
           </div>
         </div>
 
@@ -303,7 +377,7 @@ export function ConnectionForm({ saved, connecting, onSaved, onDeleted, onConnec
               className="h-8"
               autoComplete="off"
               value={form.password}
-              placeholder={saved?.hasPassword ? 'Saved in Keychain' : ''}
+              placeholder={passwordPlaceholder}
               onChange={(e) => update({ password: e.target.value })}
             />
             <Label className="flex items-center gap-2 text-xs font-normal">
@@ -434,6 +508,12 @@ export function ConnectionForm({ saved, connecting, onSaved, onDeleted, onConnec
               Delete
             </Button>
           )}
+          {saved && !dirty && (
+            <Button type="button" variant="ghost" onClick={() => onDuplicate(saved)}>
+              <CopyPlus aria-hidden="true" />
+              Duplicate
+            </Button>
+          )}
           <span className="flex-1" />
           <Button type="button" variant="outline" onClick={handleTest} disabled={testing}>
             {testing ? (
@@ -444,15 +524,44 @@ export function ConnectionForm({ saved, connecting, onSaved, onDeleted, onConnec
             {testing ? 'Testing…' : 'Test connection'}
           </Button>
           <Button type="button" variant="outline" onClick={() => void handleSave()} disabled={busy || !dirty}>
-            Save
+            {fork ? 'Save as new' : 'Save'}
           </Button>
-          <Button type="submit" disabled={busy} title={dirty ? 'Saves the favorite, then connects' : undefined}>
+          <Button
+            type="submit"
+            disabled={busy}
+            title={
+              fork && saved
+                ? `Saves a new favorite, then connects. ${saved.nickname} is kept.`
+                : dirty
+                  ? 'Saves the favorite, then connects'
+                  : undefined
+            }
+          >
             {connecting && <LoaderCircle className="animate-spin" aria-hidden="true" />}
-            {connecting ? 'Connecting…' : dirty ? 'Save & Connect' : 'Connect'}
+            {connecting ? 'Connecting…' : fork ? 'Connect as new' : dirty ? 'Save & Connect' : 'Connect'}
             <kbd className={kbdOnPrimary}>↵</kbd>
           </Button>
         </div>
 
+        {saved && (
+          <AlertDialog open={confirmUpdate} onOpenChange={setConfirmUpdate}>
+            <AlertDialogContent size="sm">
+              <AlertDialogHeader>
+                <AlertDialogTitle>Update {saved.nickname}?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  It is open in a tab, connected to {connectionSubtitle(saved)}. That tab stays on it until you close
+                  it; the favorite opens {connectionSubtitle(toConnectionInput(form))} from now on.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel size="sm">Keep it</AlertDialogCancel>
+                <AlertDialogAction size="sm" onClick={() => void updateInstead(true)}>
+                  Update
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
         {saved && (
           <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
             <AlertDialogContent size="sm">

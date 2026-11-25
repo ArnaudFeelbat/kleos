@@ -35,6 +35,19 @@ function usesSshKey(config: ConnectionConfig): boolean {
 }
 
 /**
+ * Whether two favorites reach the same Postgres server the same way: host and port, and the same
+ * SSH tunnel (or none). Database, user and everything else may differ. Gates copySecretsFrom, so a
+ * stored password is only ever offered to the server it was saved for.
+ */
+export function sameServer(a: ConnectionConfig, b: ConnectionConfig): boolean {
+  const sa = a.ssh ?? null;
+  const sb = b.ssh ?? null;
+  const sameTunnel =
+    sa === null || sb === null ? sa === sb : sa.host === sb.host && sa.port === sb.port && sa.user === sb.user;
+  return a.host.trim().toLowerCase() === b.host.trim().toLowerCase() && a.port === b.port && sameTunnel;
+}
+
+/**
  * What the adapter needs for the favorite's SSH tunnel: the passphrase sent with the request,
  * else the one in the Keychain (when `connectionId` names a saved favorite), and the trusted
  * host keys. Nothing is read from the Keychain for a favorite without a key-file tunnel.
@@ -77,12 +90,20 @@ export function registerConnectionRoutes(api: Hono, deps: ServerDeps): void {
   api.post('/connections', async (c) => {
     const input = await jsonBody(c, ConnectionInput);
     const config = configOf(input);
-    const save = input.savePassword && !!input.password;
-    const saveSsh = usesSshKey(config) && !!input.saveSshPassphrase && !!input.sshPassphrase;
+    // "Connect as new" from a favorite: reuse its stored secrets on the same server only (0.7.2).
+    const source = input.copySecretsFrom ? requireConnection(deps, input.copySecretsFrom) : null;
+    const copying = source !== null && sameServer(source, config);
+    const password = input.password || (copying && input.savePassword ? await secrets.get(source.id) : null);
+    const sameKey = copying && usesSshKey(config) && source.ssh?.keyPath === config.ssh?.keyPath;
+    const sshPassphrase =
+      input.sshPassphrase ||
+      (sameKey && input.saveSshPassphrase ? await secrets.get(sshSecretAccount(source.id)) : null);
+    const save = input.savePassword && !!password;
+    const saveSsh = usesSshKey(config) && !!input.saveSshPassphrase && !!sshPassphrase;
     const created = store.createConnection(config, save, saveSsh);
     try {
-      if (save && input.password) await secrets.set(created.id, input.password);
-      if (saveSsh && input.sshPassphrase) await secrets.set(sshSecretAccount(created.id), input.sshPassphrase);
+      if (save && password) await secrets.set(created.id, password);
+      if (saveSsh && sshPassphrase) await secrets.set(sshSecretAccount(created.id), sshPassphrase);
     } catch (err) {
       // Never leave a favorite that claims a Keychain entry it does not have.
       await secrets.delete(created.id).catch(() => undefined);

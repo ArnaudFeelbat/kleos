@@ -53,6 +53,12 @@ export const ConnectionInput = ConnectionConfig.extend({
   /** SSH key passphrase: null keeps the stored one; same Keychain rules as the password. (0.4) */
   sshPassphrase: z.string().nullable().optional(),
   saveSshPassphrase: z.boolean().optional(),
+  /**
+   * Create only (0.7.2): a favorite made from another one ("Connect as new") reuses that
+   * favorite's stored password and SSH passphrase when none is typed — and only when both point
+   * at the same server (host, port, SSH tunnel), so a password never travels to another host.
+   */
+  copySecretsFrom: z.string().nullable().optional(),
 });
 export type ConnectionInput = z.infer<typeof ConnectionInput>;
 
